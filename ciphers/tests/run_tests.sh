@@ -175,6 +175,15 @@ slow | cm_bifid_pride | cm-bifid | cm_bifid_pride.txt | -logprob -period 7 -nres
 fast | progkey_decl      | progkey      | progkey_decl.txt      | -period 10 -progression 1 -nrestarts 4 -nhillclimbs 8000 -inittemp 0.08 -backtrackprob 0.3
 fast | progkey_var_decl  | progkey-var  | progkey_var_decl.txt  | -period 10 -progression 2 -nrestarts 4 -nhillclimbs 8000 -inittemp 0.08 -backtrackprob 0.3
 fast | progkey_beau_decl | progkey-beau | progkey_beau_decl.txt | -period 10 -progression 3 -nrestarts 4 -nhillclimbs 8000 -inittemp 0.08 -backtrackprob 0.3
+# Interrupted Key (periodic Vigenere/Variant/Beaufort keyword reset at break points). Period pinned
+# to keep the cases fast; the ct cases enumerate the interruptor letter BLIND (a Gromark-style pre-
+# pass ranks it), the breaks case supplies the group-starts (random/word-division), and the pt case
+# pins the interruptor (blind pt is fragile -- see tests/test_intkey_solver.c). Reward-only quadgrams.
+fast | intkey_decl        | intkey        | intkey_decl.txt        | -period 6 -intscheme ct -nrestarts 6 -nhillclimbs 8000 -inittemp 0.08 -backtrackprob 0.3
+fast | intkey_var_decl    | intkey-var    | intkey_var_decl.txt    | -period 6 -intscheme ct -nrestarts 6 -nhillclimbs 8000 -inittemp 0.08 -backtrackprob 0.3
+fast | intkey_beau_decl   | intkey-beau   | intkey_beau_decl.txt   | -period 6 -intscheme ct -nrestarts 6 -nhillclimbs 8000 -inittemp 0.08 -backtrackprob 0.3
+fast | intkey_ptint_decl  | intkey        | intkey_ptint_decl.txt  | -period 7 -intscheme pt -interruptor R -nrestarts 6 -nhillclimbs 8000 -inittemp 0.08 -backtrackprob 0.3
+fast | intkey_breaks_decl | intkey        | intkey_breaks_decl.txt | -period 6 -intscheme breaks -breaks intkey_breaks_decl.breaks -nrestarts 6 -nhillclimbs 8000 -inittemp 0.08 -backtrackprob 0.3
 # --- pure transposition ---
 fast | transmatrix_solve   | transmatrix   | transmatrix_solve.txt   | -nrestarts 400 -nhillclimbs 2000
 slow | transposition_solve | transposition | transposition_solve.txt | -nrestarts 6000 -nhillclimbs 6000

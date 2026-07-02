@@ -221,6 +221,16 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "progkey") || str_eq(arg, "pk") || str_eq(arg, "progressivekey"))
         return PROGKEY;
 
+    // Interrupted Key (periodic keyword that resets to the first key letter at break points).
+    // Check the variant/beaufort aliases before the bare intkey so a substring never shadows them.
+    if (str_eq(arg, "interrupted-key-var") || str_eq(arg, "intkey-var") || str_eq(arg, "ikv"))
+        return INTERRUPTED_KEY_VAR;
+    if (str_eq(arg, "interrupted-key-beau") || str_eq(arg, "intkey-beau") || str_eq(arg, "ikb"))
+        return INTERRUPTED_KEY_BEAU;
+    if (str_eq(arg, "interrupted-key") || str_eq(arg, "interruptedkey") ||
+        str_eq(arg, "intkey") || str_eq(arg, "ik"))
+        return INTERRUPTED_KEY;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }

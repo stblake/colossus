@@ -12,8 +12,8 @@ folder holds unrelated experiment runs, logs, and candidate dumps; ignore it.)
 ## What this is
 
 Colossus is a polyalphabetic substitution cipher solver in C by Sam Blake (started 14 July 2023).
-It attacks **Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, Autokey, and Progressive
-Key** ciphers (plus
+It attacks **Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, Autokey, Progressive
+Key, and Interrupted Key** ciphers (plus
 their variants and Beaufort/Porta autokey tableaus), optionally composed with a
 transposition stage. The engine is a **stochastic, slippery, shotgun-restarted hill
 climber with backtracking**. Cipher conventions follow the American Cryptogram
@@ -62,6 +62,15 @@ src/polyalphabetic/   # Vigenère family — searched inside POLYALPHA_MODEL
                          #   x progression 0..25 enumerated (IoC fails through the drift). For a
                          #   fixed prog, DE-PROGRESSING decouples the keyword -> per-column monogram
                          #   warm start, then n-gram anneal. 3 type codes share the solver.
+  intkey.c intkey_solver.c/.h  # Interrupted Key (Vig/Var/Beau base): a periodic keyword whose key
+                         #   index RESETS to key letter 1 at break points. Own CipherModel (NOT in
+                         #   POLYALPHA_MODEL); IoC fails, so period swept + interruption STRATEGY
+                         #   enumerated. ct-interruptor (reset after a ct letter -> breaks known from
+                         #   cipher -> decouples like Vigenere, the reliable blind mode), pt-interruptor
+                         #   (reset after a pt letter -> causal, EM warm start, FRAGILE), supplied
+                         #   -breaks (random/word-division, reliable), joint keyword+break-mask anneal
+                         #   (blind random, characterized). Gromark-style pre-pass ranks (period,
+                         #   strategy, interruptor); top-K annealed. 3 type codes share the solver.
 
 src/transposition/    # pure-transposition solvers + shared helpers
   trans_common.c/.h    # shared transposition-solver helpers: report_transposition(),
@@ -173,6 +182,7 @@ tools/digrafid_gen.c         # standalone Digrafid generator (make digrafid_gen)
 tools/cm_bifid_gen.c         # standalone CM Bifid generator (make cm_bifid_gen)
 tools/trisquare_gen.c        # standalone Tri-Square generator (make trisquare_gen)
 tools/progkey_gen.c          # standalone Progressive Key generator (make progkey_gen)
+tools/intkey_gen.c           # standalone Interrupted Key generator (make intkey_gen)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
 ciphers/kryptos/     # K1–K4 ciphertexts + run scripts
@@ -321,7 +331,15 @@ decryption is deterministic) — the decrypt/encrypt round-trip over random inde
 (incl. odd, lone-trailing passthrough) and a side-generic 6x6, a cipher-length check (`3*(len/2)+len%2`), and the
 **POLYPHONIC-INVARIANCE** structural test: for a digraph it enumerates all 25 `(c0,c2)` column/row alternatives
 and asserts every one decrypts to the SAME digraph — the Tri-Square analogue of the Two-Square transparency /
-Four-Square identity-algebra structural check).
+Four-Square identity-algebra structural check), and
+`tests/test_intkey.c` (the Interrupted Key primitives: the ACA worked-example known-answer vector via the mask
+form — keyword `ORANGE`, the word-division break lengths 4,6,2,3,4,3,1,1,5,1,2,3,5, `THISCIPHER…PERIODICS` →
+`HYIFQZPUKV…ICUIPY` — encrypt asserted cell-for-cell + decrypt round-trip; encrypt/decrypt round-trips for the
+ct / pt / mask forms over random keyword × length × period × interruptor and all three bases (incl. ragged, P=1,
+len=1); agreement with an INDEPENDENT reference (raw shift formulas + a hand-rolled reset walk, sharing no code
+with intkey.c) for all three forms; the ct consistency check (`decrypt_ctint` == `decrypt_mask` over
+`build_mask_ct`); and edge cases — an interruptor that never occurs (pt → plain periodic base cipher), one that
+occurs at every position (→ monoalphabetic on the first key letter), and P=1).
 `make testopt` additionally runs the in-process solver regressions
 `tests/test_solver.c` (polyalphabetic), `tests/test_playfair_solver.c` (Playfair:
 validates the per-type schedule registry, asserts an 800-char capability floor, and
@@ -421,13 +439,22 @@ recovery breakdown (even positions decrypt through sq1, odd through sq2 — both
 multi-keyword sweep (mean/worst). The polyphonic c0/c2 letters spread the full alphabet over every position, so
 recovery is EASIER than Four-Square despite the 75-cell state (reliable from ~500 letters, a 300-400 cliff) — the
 basis the `SearchDefaults` `12x500000` three-square schedule is tuned against; because plant()'s encode is
-polyphonic (RNG-driven) it seeds the RNG for a reproducible cipher).
+polyphonic (RNG-driven) it seeds the RNG for a reproducible cipher), and
+`tests/test_intkey_solver.c` (Interrupted Key: registry validation for all three codes + a non-registry type; a
+**CT capability floor** (blind interruptor, P pinned) across bases/keywords — ~100% from ~40 letters, the reliable
+workhorse — + a length cliff; a **BLIND period** solve (P swept, reported P asserted == true); a **BLIND
+interruptor+scheme** solve (reported letter AND scheme asserted == true); a multi-keyword sweep (mean/worst, CT); a
+**supplied-breaks** (random/word-division) solve via `-breaks` (asserted); a **PT** capability floor asserted only
+with the interruptor PINNED, plus a printed **fragility characterization** (blind pt mispicks the interruptor / hits
+rugged basins — seed/content sensitive, not asserted); a **JOINT** blind-random characterization (printed, a 20-char
+crib lifting it ~29%→~64%); and per-scheme calibration under `-method anneal/shotgun/pso`. The basis the
+`SearchDefaults` `6x8000` schedule is tuned against, and the source of the CT-reliable / PT-fragile finding).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
 
 `ciphers/tests/run_tests.sh` is the **accuracy regression suite**: a manifest of
-66 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
+71 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
 `q*_p1xx` puzzles, pure-transposition types, a homophonic substitution, a Playfair
 cipher, a Bifid cipher, a Trifid cipher, a Hill cipher, the three Phillips
 variants — Row / Column / Row-Column — a Two-Square (horizontal + vertical), a
@@ -442,8 +469,11 @@ pinned), the three Progressive Key bases (`progkey_decl` / `progkey_var_decl` /
 `slidefair_var_decl` / `slidefair_beau_decl`, period pinned), a Seriated Playfair cipher
 (`seriated_playfair_decl`, period pinned, `-logprob`), a Digrafid cipher
 (`digrafid_pride`, period pinned, `-logprob`), a CM Bifid cipher
-(`cm_bifid_pride`, ODD period 7 pinned, `-logprob`), and a Tri-Square cipher
-(`trisquare_pride`, three keyed squares, `-logprob`)) that each
+(`cm_bifid_pride`, ODD period 7 pinned, `-logprob`), a Tri-Square cipher
+(`trisquare_pride`, three keyed squares, `-logprob`), and the Interrupted Key family
+(`intkey_decl` / `intkey_var_decl` / `intkey_beau_decl` — ct-interruptor, blind interruptor;
+`intkey_ptint_decl` — pt-interruptor, interruptor pinned; `intkey_breaks_decl` — supplied `-breaks`;
+all period pinned)) that each
 solve to ~100% with a **fixed `-seed`** and quadgrams. It runs the solver, pulls the
 recovered plaintext from the last field of the `>>>` CSV line, compares it
 character-for-character to a sibling `<name>.solution` (bare A–Z plaintext), and prints
@@ -453,8 +483,8 @@ bit-identical refactor keeps every score at 100% and any behavioural regression 
 immediately. Each test's `-nrestarts`/`-nhillclimbs` are trimmed to the smallest that
 still lands on the solution at the seed, so the full run is ~2 min (was ~45 before
 trimming). The manifest tags each case `fast` or `slow`:
-`./run_tests.sh --fast` runs the 31-case fast tier in ~50s (use while iterating; incl. the three
-~0s Progressive Key bases and the three ~0s Slidefair bases),
+`./run_tests.sh --fast` runs the 36-case fast tier in ~60s (use while iterating; incl. the three
+~0s Progressive Key bases, the three ~0s Slidefair bases, and the five ~1s Interrupted Key cases),
 `--slow` the 31 heavier ciphers (incl. the ~24s Playfair, ~6s Bifid, ~18s Trifid, the
 three ~13s Phillips solves, the two ~10s Two-Square solves, the ~17s Four-Square, the ~20s Tri-Square, the
 ~10s ADFGX, the four ~6–8s Nihilist Substitution solves, the three ~1s Nicodemus
@@ -494,7 +524,9 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `seriated-playfair`/`serpf`/`spf`/`62`,
 `digrafid`/`df`/`dgf`/`63`,
 `cm-bifid`/`cmbifid`/`cmb`/`64`,
-`trisquare`/`tri-square`/`3square`/`3sq`/`trisq`/`65`
+`trisquare`/`tri-square`/`3square`/`3sq`/`trisq`/`65`,
+`interrupted-key`/`intkey`/`ik`/`66`, `interrupted-key-var`/`intkey-var`/`ikv`/`67`,
+`interrupted-key-beau`/`intkey-beau`/`ikb`/`68`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -980,6 +1012,50 @@ Because the model implements `seed`/`perturb`/`copy`, `-method anneal|shotgun|ps
 Generate test ciphers with `tools/progkey_gen.c` (`make progkey_gen`; args are a plaintext, a keyword,
 a progression index, and `vig`/`var`/`beau`).
 
+The **Interrupted Key** family (`interrupted-key`/`intkey`/`ik`/`66`, `intkey-var`/`67`,
+`intkey-beau`/`68`; `solve_intkey()`, `INTKEY_MODEL`, `SHAPE_ANNEAL`) is the ACA **periodic keyword
+that is INTERRUPTED** — a leading K4 hypothesis and the second **non-stationary periodic key** type
+(after Progressive Key). A base cipher (Vig/Var/Beau) enciphers under a P-letter keyword whose key
+index **resets to the first key letter** at *break* points and otherwise increments `(k+1) mod P`
+(the ACA: "enciphered with 1, 2, 3 or more letters of the keyword which is interrupted ... Return to
+the first key letter each time ... The entire keyword must be used at least once"). The base shift
+math is Progressive Key's, so the primitive (`intkey.c`) **reuses** `progkey_base_encrypt/decrypt`;
+it is hand-verified cell-for-cell against the ACA worked example (Vigenère, keyword `ORANGE`, the
+word-division break lengths 4,6,2,3,4,3,1,1,5,1,2,3,5, `THISCIPHER…PERIODICS` →
+`HYIFQZPUKV…ICUIPY`). **The unifying model:** every scheme reduces to *assigning each position a key
+index that resets to 0 at break points*; schemes differ only in how breaks arise (the interruption
+**STRATEGY**, `IK_STRAT_*`). IoC period estimation fails through the interruption (columns are not
+monoalphabetic, like autokey/progkey), so the **period is SWEPT** and the strategy is **enumerated**,
+the n-gram score picking the winner:
+- **ct-interruptor** (`ct`): reset AFTER a chosen **ciphertext** letter → the break positions are a
+  function of the ciphertext ALONE (keyword-independent), so the per-position key index is KNOWN;
+  grouping positions by index makes each column an independent Caesar/Beaufort sample recovered by a
+  **monogram fit** (the `intkey_build_mask_ct` mask + the analog of `derive_optimal_cycleword`). This
+  is the **reliable blind workhorse** — recovers like a plain Vigenère, ~100% from ~40 letters.
+- **pt-interruptor** (`pt`): reset AFTER a chosen **plaintext** letter → breaks are causal (keyword-
+  dependent), warm-started by an **EM** loop (fit keyword under the plain-periodic assumption, causal-
+  decrypt to get the actual columns, refit). **FRAGILE** — because the reset trigger is a plaintext
+  letter, a wrong (keyword, interruptor) pair can still de-cohere into fairly English text, so blind
+  `pt` can mispick the interruptor on short text and even a *pinned* interruptor can hit a rugged
+  multi-modal basin (seed/content sensitive). Characterized, not guaranteed (see the solver test).
+- **supplied breaks** (`breaks`, `-breaks <file>`): user-supplied group-start positions (random /
+  word-division). Mask known → decouples exactly like `ct`; **reliable**. `P` = max group length.
+- **joint** (`joint`): blind random — the keyword AND an N-bit **break-mask** (in the `key` lane) are
+  annealed together; the only genuinely blind attack on random breaks but reliable only on longer text
+  / with cribs (characterized — a crib lifts it markedly, e.g. ~29% → ~64%).
+**Efficiency**: a **Gromark-style pre-pass** scores every `(period, strategy, interruptor)` by the
+n-gram of its monogram-derived decrypt and keeps only the **top-K** (`-nprimers`, default 12) to
+anneal — `ct` typically solves on the warm seed. `score_adjust` stays 0 (every keyword is a bijective
+decrypt; n-grams discriminate). Default blind enumeration is **ct + pt**; `-breaks` selects `breaks`,
+`-intscheme ct|pt|breaks|joint` pins a strategy, `-interruptor <A-Z>` pins the letter, `-period`/
+`-mincols`/`-maxcols` bound the period sweep. Like the rest of the Vigenère family it **rides the
+reward-only quadgram table (no `-logprob`)**. **Cribs are supported** (positional: `decrypted[i]` is
+plaintext position i). It is a **dedicated `CipherModel`, NOT inside `POLYALPHA_MODEL`** (the break
+structure is not a stationary period the engine's histograms model). Because the model implements
+`seed`/`perturb`/`copy`, `-method anneal|shotgun|pso` all run on it. Generate test ciphers with
+`tools/intkey_gen.c` (`make intkey_gen`; args are a plaintext, a keyword, `vig`/`var`/`beau`,
+`ct`/`pt`/`random`, and the interruptor letter (ct/pt) or an RNG seed (random)).
+
 The **Slidefair** family (`slidefair`/`sf`/`59`, `slidefair-var`/`sfv`/`60`, `slidefair-beau`/`sfb`/`61`;
 `solve_slidefair()`, `SLIDEFAIR_MODEL`, `SHAPE_ANNEAL`) is the ACA **periodic DIGRAPHIC
 Vigenère/Variant/Beaufort** — the digraphic sibling of Portax (rectangle-over-a-slide applied to the
@@ -1212,7 +1288,11 @@ and CM Bifid
 anneal (no decoupling reward) per period; the long per-restart climb is the critical lever (more restarts with
 shorter climbs does WORSE near the cliff), so it is a few LONG climbs, which recovers from ~480 letters at an ODD
 period — EVEN periods are a documented ciphertext-only degeneracy no budget escapes — and the budget is *per P*
-so the blind sweep multiplies it).
+so the blind sweep multiplies it), and the three Interrupted Key bases
+(`SHAPE_ANNEAL`, **`6x8000` per kept pre-pass config**, `inittemp 0.08`, `backtrack 0.30` — the climbed
+state is just the P per-column key letters, and the Gromark-style pre-pass warm-starts each kept
+`(period, strategy, interruptor)` config close to the answer, so a few short restarts x modest climbs
+suffice; the ct strategy usually solves on the warm seed. Same lean profile as Progressive Key / Slidefair).
 This is the mechanism for moving the magic
 per-type budgets out of the run scripts and into the binary; add tuned entries for other
 types incrementally. The registry is validated end-to-end in `tests/test_playfair_solver.c`.

@@ -82,6 +82,9 @@
 #define DIGRAFID           63  // Digrafid: digraphic fractionation over two keyed 27-symbol alphabets (period swept)
 #define CM_BIFID           64  // CM Bifid (Conjugated Matrix Bifid): Bifid fractionation over two keyed Polybius squares (period swept)
 #define TRI_SQUARE         65  // Tri-Square: digraphic substitution over three keyed 5x5 squares (digraph -> trigraph)
+#define INTERRUPTED_KEY      66  // Interrupted Key (Vigenere base): periodic keyword that resets to key letter 1 at break points
+#define INTERRUPTED_KEY_VAR  67  // Interrupted Key, Variant base (C = P - k)
+#define INTERRUPTED_KEY_BEAU 68  // Interrupted Key, Beaufort base (C = k - P, reciprocal)
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 
@@ -100,6 +103,25 @@ static inline int progkey_base(int cipher_type) {
 }
 // progkey_base_encrypt / progkey_base_decrypt are defined just below the
 // ALPHABET_SIZE definition (they use it as the mod base).
+
+// Interrupted Key (intkey.c / intkey_solver.c). A periodic Vig/Var/Beau keyword whose key index
+// RESETS to the first key letter at break points (then increments mod P again). The base shift
+// math is identical to Progressive Key's, so IK_BASE_* reuse the PROGKEY_BASE_* values and the
+// primitives call progkey_base_encrypt/decrypt. `intkey_base` maps the three type codes to a base;
+// the interruption STRATEGY (how break points arise) is enumerated by the solver (IK_STRAT_*).
+enum { IK_BASE_VIG = PROGKEY_BASE_VIG, IK_BASE_VAR = PROGKEY_BASE_VAR, IK_BASE_BEAU = PROGKEY_BASE_BEAU };
+enum {
+    IK_STRAT_CT     = 0,   // reset AFTER a chosen ciphertext letter (breaks known from cipher alone)
+    IK_STRAT_PT     = 1,   // reset AFTER a chosen plaintext letter (breaks causal, keyword-dependent)
+    IK_STRAT_BREAKS = 2,   // reset at user-supplied break positions (random / word-division, known)
+    IK_STRAT_JOINT  = 3    // blind: keyword + break-mask searched jointly (random, characterized)
+};
+
+static inline int intkey_base(int cipher_type) {
+    if (cipher_type == INTERRUPTED_KEY_VAR)  return IK_BASE_VAR;
+    if (cipher_type == INTERRUPTED_KEY_BEAU) return IK_BASE_BEAU;
+    return IK_BASE_VIG;
+}
 
 #define GROMARK_PRIMER_LEN 5    // basic Gromark standard primer length (ACA convention)
 #define GROMARK_MAX_PRIMER 26   // max primer length == max period (periodic: keyword len <= 26)
@@ -268,6 +290,16 @@ typedef struct {
     bool progression_present;
     int  progression;
 
+    // Interrupted Key: pin the interruptor letter / strategy (else the solver enumerates them);
+    // -breaks supplies known group-start positions (random / word-division scheme, decoded in
+    // solve_intkey from a whitespace-separated file of 0-based positions).
+    bool interruptor_present;
+    int  interruptor;             // 0..25
+    bool intscheme_present;
+    int  intscheme;               // IK_STRAT_*
+    bool breaks_present;
+    char breaks_file[MAX_FILENAME_LEN];
+
     // Input Flags for lengths
     bool plaintext_keyword_len_present;
     bool ciphertext_keyword_len_present;
@@ -391,6 +423,8 @@ typedef struct {
     int ciphertext_keyword[ALPHABET_SIZE];
     int cycleword[MAX_CYCLEWORD_LEN];
     int progression;            // Progressive Key: recovered progression index (else 0)
+    int interruptor;            // Interrupted Key: recovered interruptor letter 0..25 (else -1)
+    int intscheme;              // Interrupted Key: recovered strategy IK_STRAT_* (else -1)
     int decrypted[MAX_CIPHER_LENGTH];
     int decrypted_len;
 } SolveResult;
@@ -629,6 +663,31 @@ void progkey_decrypt(int decrypted[], int cipher_indices[], int cipher_len,
     int keyword[], int P, int prog, int base);
 void progkey_deprogress(int out[], int cipher_indices[], int cipher_len,
     int P, int prog, int base);
+
+// Interrupted Key cipher (intkey.c). A periodic base cipher (Vig/Var/Beau, `base`) under a
+// P-letter keyword (per-column shifts 0..25, in `keyword[]`) whose key index k starts at 0,
+// increments (k+1)%P each position, and RESETS to 0 at each break point. The *-mask forms take
+// an is_break[] array (is_break[i]==1 => position i starts a new group; is_break[0] implicit);
+// the *-ptint forms reset causally after the plaintext letter equals `interruptor`.
+void intkey_encrypt_mask(int encrypted[], int plaintext_indices[], int plaintext_len,
+    int keyword[], int P, int base, const int is_break[]);
+void intkey_decrypt_mask(int decrypted[], int cipher_indices[], int cipher_len,
+    int keyword[], int P, int base, const int is_break[]);
+void intkey_encrypt_ptint(int encrypted[], int plaintext_indices[], int plaintext_len,
+    int keyword[], int P, int base, int interruptor);
+void intkey_decrypt_ptint(int decrypted[], int cipher_indices[], int cipher_len,
+    int keyword[], int P, int base, int interruptor);
+// Ciphertext-interruptor: reset causally AFTER the produced/consumed ciphertext letter equals
+// `interruptor`. Encryption must be causal (the reset depends on the ciphertext being produced);
+// decryption is equivalent to intkey_decrypt_mask over the mask built by intkey_build_mask_ct,
+// which is what the solver uses (build the mask once, then anneal the keyword).
+void intkey_encrypt_ctint(int encrypted[], int plaintext_indices[], int plaintext_len,
+    int keyword[], int P, int base, int interruptor);
+void intkey_decrypt_ctint(int decrypted[], int cipher_indices[], int cipher_len,
+    int keyword[], int P, int base, int interruptor);
+// Build the ciphertext-interruptor break mask: is_break[i]==1 iff cipher[i-1]==interruptor
+// (reset AFTER the interruptor CT letter). Keyword-independent, so precomputable by the solver.
+void intkey_build_mask_ct(int is_break[], const int cipher_indices[], int cipher_len, int interruptor);
 
 // Gromark / Periodic Gromark cipher (gromark.c). A keyed 26-letter substitution sigma (a
 // permutation of A..Z) composed with a chain-addition running key from a P-digit primer

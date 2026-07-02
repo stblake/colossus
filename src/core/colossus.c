@@ -236,6 +236,7 @@
 #include "seriated_playfair_solver.h"
 #include "digrafid_solver.h"
 #include "cm_bifid_solver.h"
+#include "intkey_solver.h"
 
 void init_config(ColossusConfig *cfg) {
     // Set Defaults
@@ -256,6 +257,12 @@ void init_config(ColossusConfig *cfg) {
     cfg->period_present = false;
     cfg->progression_present = false;   // progkey: 0 => sweep the progression index 0..25
     cfg->progression = 0;
+    cfg->interruptor_present = false;   // intkey: else enumerate the 26 interruptor letters
+    cfg->interruptor = 0;
+    cfg->intscheme_present = false;     // intkey: else blind default (ct + pt)
+    cfg->intscheme = IK_STRAT_CT;
+    cfg->breaks_present = false;        // intkey: -breaks supplies known group-start positions
+    cfg->breaks_file[0] = '\0';
     cfg->max_period = 0;        // 0 => derive from ciphertext length (min(20, len/2))
     cfg->n_periods = 5;         // anneal the estimator's top-K candidate periods
     cfg->n_primers = 0;         // Gromark pre-pass top-K (0 => auto by ciphertext length)
@@ -685,6 +692,29 @@ int main(int argc, char **argv) {
             cfg.progression_present = true;
             cfg.progression = atoi(argv[++i]);
             printf("-progression %d\n", cfg.progression);
+        } else if (strcmp(argv[i], "-interruptor") == 0) {
+            // Interrupted Key: pin the interruptor letter (else the 26 letters are enumerated).
+            char c = toupper((unsigned char) argv[++i][0]);
+            if (c < 'A' || c > 'Z') { printf("\n\nERROR: -interruptor needs a letter A..Z\n\n"); return 0; }
+            cfg.interruptor_present = true;
+            cfg.interruptor = c - 'A';
+            printf("-interruptor %c\n", c);
+        } else if (strcmp(argv[i], "-intscheme") == 0) {
+            // Interrupted Key: pin the interruption strategy (else blind ct+pt, or breaks if -breaks).
+            const char *s = argv[++i];
+            if (strcmp(s, "ct") == 0)          cfg.intscheme = IK_STRAT_CT;
+            else if (strcmp(s, "pt") == 0)     cfg.intscheme = IK_STRAT_PT;
+            else if (strcmp(s, "breaks") == 0) cfg.intscheme = IK_STRAT_BREAKS;
+            else if (strcmp(s, "joint") == 0)  cfg.intscheme = IK_STRAT_JOINT;
+            else { printf("\n\nERROR: -intscheme must be ct|pt|breaks|joint\n\n"); return 0; }
+            cfg.intscheme_present = true;
+            printf("-intscheme %s\n", s);
+        } else if (strcmp(argv[i], "-breaks") == 0) {
+            // Interrupted Key: file of whitespace-separated 0-based group-start positions.
+            cfg.breaks_present = true;
+            strncpy(cfg.breaks_file, argv[++i], MAX_FILENAME_LEN - 1);
+            cfg.breaks_file[MAX_FILENAME_LEN - 1] = '\0';
+            printf("-breaks %s\n", cfg.breaks_file);
         } else {
             printf("\n\nERROR: unknown command line arg: \'%s\'\n\n", argv[i]);
             return 0;
@@ -816,6 +846,11 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Digrafid cipher (digraphic fractionation over two keyed 27-symbol alphabets).\n\n");
     } else if (cfg.cipher_type == CM_BIFID) {
         printf("\nAttacking a CM Bifid cipher (Bifid fractionation over two keyed Polybius squares).\n\n");
+    } else if (cfg.cipher_type == INTERRUPTED_KEY || cfg.cipher_type == INTERRUPTED_KEY_VAR ||
+               cfg.cipher_type == INTERRUPTED_KEY_BEAU) {
+        printf("\nAttacking an Interrupted Key cipher (periodic %s keyword reset at break points).\n\n",
+            cfg.cipher_type == INTERRUPTED_KEY_VAR ? "Variant"
+            : cfg.cipher_type == INTERRUPTED_KEY_BEAU ? "Beaufort" : "Vigenere");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1323,6 +1358,13 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     if (cfg->cipher_type == SLIDEFAIR || cfg->cipher_type == SLIDEFAIR_VAR ||
         cfg->cipher_type == SLIDEFAIR_BEAU) {
         solve_slidefair(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == INTERRUPTED_KEY || cfg->cipher_type == INTERRUPTED_KEY_VAR ||
+        cfg->cipher_type == INTERRUPTED_KEY_BEAU) {
+        solve_intkey(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
