@@ -845,6 +845,18 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 6, .s_n_hill_climbs = 8000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Condi: a free-permutation sigma anneal per swept starter (26 configs). NOTE the plaintext-
+    // feedback cascade makes the true sigma an ISOLATED NEEDLE (no basin: even the best single-swap
+    // neighbour scores ~0.9 below the true key, the mean neighbour is near the random floor), so no
+    // local-search budget cracks it blind -- this is a documented structural limitation, not a
+    // tuning target (see tests/test_condi_solver.c). The budget is therefore kept MODEST (a bounded
+    // honest attempt that terminates), not large.
+    { .cipher_type = CONDI, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 6, .a_n_hill_climbs = 60000,
+      .a_init_temp = 0.08, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 6, .s_n_hill_climbs = 60000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 
 bool apply_cipher_defaults(ColossusConfig *cfg, bool announce) {

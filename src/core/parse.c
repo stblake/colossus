@@ -231,6 +231,9 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "intkey") || str_eq(arg, "ik"))
         return INTERRUPTED_KEY;
 
+    // Condi (plaintext-feedback substitution over a keyed alphabet).
+    if (str_eq(arg, "condi") || str_eq(arg, "cond")) return CONDI;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }

@@ -85,6 +85,7 @@
 #define INTERRUPTED_KEY      66  // Interrupted Key (Vigenere base): periodic keyword that resets to key letter 1 at break points
 #define INTERRUPTED_KEY_VAR  67  // Interrupted Key, Variant base (C = P - k)
 #define INTERRUPTED_KEY_BEAU 68  // Interrupted Key, Beaufort base (C = k - P, reciprocal)
+#define CONDI              69  // Condi: plaintext-feedback substitution over a keyed alphabet (shift = position of the previous plaintext letter)
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 
@@ -300,6 +301,10 @@ typedef struct {
     bool breaks_present;
     char breaks_file[MAX_FILENAME_LEN];
 
+    // Condi: pin the starter offset (else the solver enumerates the 26 starter values 0..25).
+    bool startkey_present;
+    int  startkey;                // 0..25
+
     // Input Flags for lengths
     bool plaintext_keyword_len_present;
     bool ciphertext_keyword_len_present;
@@ -425,6 +430,7 @@ typedef struct {
     int progression;            // Progressive Key: recovered progression index (else 0)
     int interruptor;            // Interrupted Key: recovered interruptor letter 0..25 (else -1)
     int intscheme;              // Interrupted Key: recovered strategy IK_STRAT_* (else -1)
+    int condi_start;            // Condi: recovered starter offset 0..25 (else 0)
     int decrypted[MAX_CIPHER_LENGTH];
     int decrypted_len;
 } SolveResult;
@@ -688,6 +694,16 @@ void intkey_decrypt_ctint(int decrypted[], int cipher_indices[], int cipher_len,
 // Build the ciphertext-interruptor break mask: is_break[i]==1 iff cipher[i-1]==interruptor
 // (reset AFTER the interruptor CT letter). Keyword-independent, so precomputable by the solver.
 void intkey_build_mask_ct(int is_break[], const int cipher_indices[], int cipher_len, int interruptor);
+
+// Condi cipher (condi.c). A plaintext-feedback substitution over a keyed alphabet sigma (a
+// 26-permutation; sigma[k] = letter at position k, sigma_inv[x] = position of letter x, supplied by
+// the caller). The shift for each letter is the 1-indexed position of the PREVIOUS plaintext letter
+// in sigma; the first letter uses `starter` (0..25): ct_i = sigma[(idx(pt_i) + off_i) mod 26] with
+// off_1 = starter, off_{i+1} = (idx(pt_i) + 1) mod 26. Decryption is causal.
+void condi_encrypt(const int plaintext_indices[], int plaintext_len,
+    const int sigma[], const int sigma_inv[], int starter, int encrypted[]);
+void condi_decrypt(const int cipher_indices[], int cipher_len,
+    const int sigma[], const int sigma_inv[], int starter, int decrypted[]);
 
 // Gromark / Periodic Gromark cipher (gromark.c). A keyed 26-letter substitution sigma (a
 // permutation of A..Z) composed with a chain-addition running key from a P-digit primer

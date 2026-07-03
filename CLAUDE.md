@@ -13,7 +13,7 @@ folder holds unrelated experiment runs, logs, and candidate dumps; ignore it.)
 
 Colossus is a polyalphabetic substitution cipher solver in C by Sam Blake (started 14 July 2023).
 It attacks **Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, Autokey, Progressive
-Key, and Interrupted Key** ciphers (plus
+Key, Interrupted Key, and Condi** ciphers (plus
 their variants and Beaufort/Porta autokey tableaus), optionally composed with a
 transposition stage. The engine is a **stochastic, slippery, shotgun-restarted hill
 climber with backtracking**. Cipher conventions follow the American Cryptogram
@@ -71,6 +71,15 @@ src/polyalphabetic/   # Vigenère family — searched inside POLYALPHA_MODEL
                          #   -breaks (random/word-division, reliable), joint keyword+break-mask anneal
                          #   (blind random, characterized). Gromark-style pre-pass ranks (period,
                          #   strategy, interruptor); top-K annealed. 3 type codes share the solver.
+  condi.c condi_solver.c/.h  # Condi: PLAINTEXT-FEEDBACK substitution over a keyed alphabet sigma --
+                         #   idx(ct_i)=(idx(pt_i)+idx(pt_{i-1})+1) mod 26, first letter uses a starter.
+                         #   Own CipherModel (NOT in POLYALPHA_MODEL); no period. Shipped attack is a
+                         #   free-permutation sigma anneal with the 26 starters enumerated as configs.
+                         #   KEY FINDING: the feedback makes the true sigma an ISOLATED NEEDLE (one cell
+                         #   swap re-derives the whole downstream decrypt -> no basin/gradient), so NO
+                         #   local search cracks it blind at any budget (documented, asserted in the
+                         #   solver test). Cribs passed through positionally (substrate for the untapped
+                         #   tractable attack: crib-anchored constraint solving of pos[]).
 
 src/transposition/    # pure-transposition solvers + shared helpers
   trans_common.c/.h    # shared transposition-solver helpers: report_transposition(),
@@ -183,6 +192,7 @@ tools/cm_bifid_gen.c         # standalone CM Bifid generator (make cm_bifid_gen)
 tools/trisquare_gen.c        # standalone Tri-Square generator (make trisquare_gen)
 tools/progkey_gen.c          # standalone Progressive Key generator (make progkey_gen)
 tools/intkey_gen.c           # standalone Interrupted Key generator (make intkey_gen)
+tools/condi_gen.c            # standalone Condi generator (make condi_gen)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
 ciphers/kryptos/     # K1–K4 ciphertexts + run scripts
@@ -339,7 +349,14 @@ ct / pt / mask forms over random keyword × length × period × interruptor and 
 len=1); agreement with an INDEPENDENT reference (raw shift formulas + a hand-rolled reset walk, sharing no code
 with intkey.c) for all three forms; the ct consistency check (`decrypt_ctint` == `decrypt_mask` over
 `build_mask_ct`); and edge cases — an interruptor that never occurs (pt → plain periodic base cipher), one that
-occurs at every position (→ monoalphabetic on the first key letter), and P=1).
+occurs at every position (→ monoalphabetic on the first key letter), and P=1), and
+`tests/test_condi.c` (the Condi primitives: the ACA worked-example known-answer vector — keyword `STRANGE`,
+shifted σ `VWXYZSTRANGEBCDFHIJKLMOPQU`, starter 25, `OURS… → MORC…` — encrypt asserted cell-for-cell +
+decrypt round-trip; agreement with an INDEPENDENT reference following the ACA verbal description via a
+linear alphabet search (no shared code) over random keyword × starter × length; encrypt/decrypt round-trips
+over random σ × starter × length incl. len=1; and edge cases — the starter-only len=1, `starter=0` self-
+encipherment, the offset-wrap self-encipherment (a previous letter at the last σ position → shift 0), and a
+cyclically shifted keyed alphabet).
 `make testopt` additionally runs the in-process solver regressions
 `tests/test_solver.c` (polyalphabetic), `tests/test_playfair_solver.c` (Playfair:
 validates the per-type schedule registry, asserts an 800-char capability floor, and
@@ -448,7 +465,13 @@ interruptor+scheme** solve (reported letter AND scheme asserted == true); a mult
 with the interruptor PINNED, plus a printed **fragility characterization** (blind pt mispicks the interruptor / hits
 rugged basins — seed/content sensitive, not asserted); a **JOINT** blind-random characterization (printed, a 20-char
 crib lifting it ~29%→~64%); and per-scheme calibration under `-method anneal/shotgun/pso`. The basis the
-`SearchDefaults` `6x8000` schedule is tuned against, and the source of the CT-reliable / PT-fragile finding).
+`SearchDefaults` `6x8000` schedule is tuned against, and the source of the CT-reliable / PT-fragile finding),
+and `tests/test_condi_solver.c` (Condi: registry validation (`6x60000`) + a non-registry type left untouched;
+**ASSERTS the NEEDLE** — on a real 360-letter solve the true σ out-scores its best single-swap neighbour by a
+clear margin AND its neighbours sit near the random floor (the regression guard on the finding that the
+plaintext feedback leaves no gradient); and characterizes, printed-not-asserted, that a blind solve does not
+recover (~6%), that pinning the starter + a 12×300000 budget still does not (~4% — no budget escapes the
+needle), and the per-scheme (anneal / shotgun / pso) behaviour. The source of the Condi needle finding).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
@@ -526,7 +549,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `cm-bifid`/`cmbifid`/`cmb`/`64`,
 `trisquare`/`tri-square`/`3square`/`3sq`/`trisq`/`65`,
 `interrupted-key`/`intkey`/`ik`/`66`, `interrupted-key-var`/`intkey-var`/`ikv`/`67`,
-`interrupted-key-beau`/`intkey-beau`/`ikb`/`68`
+`interrupted-key-beau`/`intkey-beau`/`ikb`/`68`,
+`condi`/`cond`/`69`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1056,6 +1080,43 @@ structure is not a stationary period the engine's histograms model). Because the
 `tools/intkey_gen.c` (`make intkey_gen`; args are a plaintext, a keyword, `vig`/`var`/`beau`,
 `ct`/`pt`/`random`, and the interruptor letter (ct/pt) or an RNG seed (random)).
 
+The **Condi** type (`condi`/`cond`/`69`; `solve_condi()`, `CONDI_MODEL`, `SHAPE_ANNEAL`) is the ACA
+**"Condi"** — a **plaintext-feedback substitution over a keyed alphabet σ** (a 26-permutation; full
+26-letter alphabet, no J→I). The shift applied to each plaintext letter is the **1-indexed position of
+the PREVIOUS plaintext letter in σ**; the first letter uses a **starter** offset (0..25). So
+`idx(ct_i) = (idx(pt_i) + idx(pt_{i-1}) + 1) mod 26` for i≥2, and decryption is **causal** (each offset
+needs the already-recovered previous plaintext letter). Only alphabetic letters participate (the ACA
+keeps word divisions / punctuation, which Colossus strips, so the feedback is over consecutive letters).
+The primitive (`condi.c`, hand-verified cell-for-cell against the ACA worked example — keyword `STRANGE`,
+shifted σ `VWXYZSTRANGEBCDFHIJKLMOPQU`, starter 25, `OURS… → MORC…`) takes σ and its inverse (caller
+precomputes the inverse; the hook caches it per decrypt). It is a **dedicated `CipherModel`, NOT inside
+`POLYALPHA_MODEL`** — there is **no period** (a feedback stream cipher) and **no per-column /
+monogram decoupling** (the running key is plaintext-derived, entangled with σ, unlike Gromark's
+σ-independent primer). The shipped attack is a **free-permutation σ anneal** (random shuffle seed,
+cell-swap moves, `score_adjust`=0 — every σ is a bijection) with the **26 starter values enumerated as
+engine configs** (a wrong starter cascades into gibberish → low n-gram score; `-startkey` pins one). σ
+is a free permutation (not a keyword+tail) because the ACA alphabet may be cyclically **shifted**, and a
+rotation genuinely changes the plaintext (idx(ct) shifts by r, the feedback sum by 2r — no cancellation),
+so the free permutation absorbs the rotation. **THE KEY PROPERTY (a documented structural limitation, the
+analog of CM Bifid's even-period degeneracy):** the plaintext feedback makes the true σ an **ISOLATED
+NEEDLE**. Because `idx(pt_i)` feeds the next offset, one σ cell swap re-derives the **entire downstream
+plaintext** (an alternating-sign shift cascades from the first changed position), so there is **no basin
+and no gradient** — measured on a real 360-letter solve the true σ scores ~**3.40** while its **best
+single-swap neighbour scores only ~2.48** (a ~0.9 cliff) and the mean neighbour ~**1.37** ≈ the random
+floor ~**1.01**. Hence **NO local search (anneal / shotgun / PSO) recovers Condi blind at any budget,
+even with the starter pinned or a crib supplied** (empirically ~4–6%); the solver is a bounded honest
+attempt, and `tests/test_condi_solver.c` **asserts the needle** (true ≫ best-neighbour, neighbours near
+random) as a regression guard while characterizing the blind/pinned/per-scheme failure. It effectively
+needs `-logprob`. **Cribs are passed through** (positional: `decrypted[i]` is plaintext position i) — the
+substrate for the **tractable attack that is NOT yet built**: crib-anchored constraint solving (a crib
+gives linear congruences `pos[ct_i] = pos[pt_i] + pos[pt_{i-1}] + 1 (mod 26)` that pin σ directly, cf.
+the `transcol-l` `-cribanchored` structural attack; also the K4-relevant form, since K4 has cribs). Its
+registry schedule is a **modest `6x60000`** (a large budget is pointless against the needle). There is
+**no `run_tests.sh` end-to-end recovery case** (blind Condi cannot reach the ~99% threshold). Because the
+model implements `seed`/`perturb`/`copy`, `-method anneal|shotgun|pso` all run on it. Generate test
+ciphers with `tools/condi_gen.c` (`make condi_gen`; args are a plaintext, a keyword, a starter, and an
+optional cyclic shift of the keyed alphabet).
+
 The **Slidefair** family (`slidefair`/`sf`/`59`, `slidefair-var`/`sfv`/`60`, `slidefair-beau`/`sfb`/`61`;
 `solve_slidefair()`, `SLIDEFAIR_MODEL`, `SHAPE_ANNEAL`) is the ACA **periodic DIGRAPHIC
 Vigenère/Variant/Beaufort** — the digraphic sibling of Portax (rectangle-over-a-slide applied to the
@@ -1292,7 +1353,11 @@ so the blind sweep multiplies it), and the three Interrupted Key bases
 (`SHAPE_ANNEAL`, **`6x8000` per kept pre-pass config**, `inittemp 0.08`, `backtrack 0.30` — the climbed
 state is just the P per-column key letters, and the Gromark-style pre-pass warm-starts each kept
 `(period, strategy, interruptor)` config close to the answer, so a few short restarts x modest climbs
-suffice; the ct strategy usually solves on the warm seed. Same lean profile as Progressive Key / Slidefair).
+suffice; the ct strategy usually solves on the warm seed. Same lean profile as Progressive Key / Slidefair),
+and Condi (`SHAPE_ANNEAL`, **`6x60000` per swept starter (26 configs)**, `inittemp 0.08`, `backtrack 0.30` —
+kept deliberately MODEST because the plaintext-feedback cascade makes the true σ an isolated needle with no
+basin, so no local-search budget cracks it blind; the entry is a bounded honest attempt, not a tuning
+target).
 This is the mechanism for moving the magic
 per-type budgets out of the run scripts and into the binary; add tuned entries for other
 types incrementally. The registry is validated end-to-end in `tests/test_playfair_solver.c`.

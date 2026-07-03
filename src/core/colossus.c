@@ -237,6 +237,7 @@
 #include "digrafid_solver.h"
 #include "cm_bifid_solver.h"
 #include "intkey_solver.h"
+#include "condi_solver.h"
 
 void init_config(ColossusConfig *cfg) {
     // Set Defaults
@@ -263,6 +264,8 @@ void init_config(ColossusConfig *cfg) {
     cfg->intscheme = IK_STRAT_CT;
     cfg->breaks_present = false;        // intkey: -breaks supplies known group-start positions
     cfg->breaks_file[0] = '\0';
+    cfg->startkey_present = false;      // condi: else enumerate the 26 starter offsets 0..25
+    cfg->startkey = 0;
     cfg->max_period = 0;        // 0 => derive from ciphertext length (min(20, len/2))
     cfg->n_periods = 5;         // anneal the estimator's top-K candidate periods
     cfg->n_primers = 0;         // Gromark pre-pass top-K (0 => auto by ciphertext length)
@@ -715,6 +718,11 @@ int main(int argc, char **argv) {
             strncpy(cfg.breaks_file, argv[++i], MAX_FILENAME_LEN - 1);
             cfg.breaks_file[MAX_FILENAME_LEN - 1] = '\0';
             printf("-breaks %s\n", cfg.breaks_file);
+        } else if (strcmp(argv[i], "-startkey") == 0) {
+            // Condi: pin the starter offset 0..25 (else the 26 values are enumerated).
+            cfg.startkey_present = true;
+            cfg.startkey = atoi(argv[++i]);
+            printf("-startkey %d\n", cfg.startkey);
         } else {
             printf("\n\nERROR: unknown command line arg: \'%s\'\n\n", argv[i]);
             return 0;
@@ -851,6 +859,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking an Interrupted Key cipher (periodic %s keyword reset at break points).\n\n",
             cfg.cipher_type == INTERRUPTED_KEY_VAR ? "Variant"
             : cfg.cipher_type == INTERRUPTED_KEY_BEAU ? "Beaufort" : "Vigenere");
+    } else if (cfg.cipher_type == CONDI) {
+        printf("\nAttacking a Condi cipher (plaintext-feedback substitution over a keyed alphabet).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1365,6 +1375,12 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     if (cfg->cipher_type == INTERRUPTED_KEY || cfg->cipher_type == INTERRUPTED_KEY_VAR ||
         cfg->cipher_type == INTERRUPTED_KEY_BEAU) {
         solve_intkey(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == CONDI) {
+        solve_condi(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
