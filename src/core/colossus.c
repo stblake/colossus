@@ -580,6 +580,9 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-logprob") == 0 || strcmp(argv[i], "-azdecrypt") == 0) {
             g_ngram_logprob = true;
             printf("-logprob (AZDecrypt-style n-gram fitness: log-probabilities with an unseen-n-gram floor)\n");
+        } else if (strcmp(argv[i], "-reversengrams") == 0 || strcmp(argv[i], "-revngrams") == 0) {
+            g_ngram_reverse = true;
+            printf("-reversengrams (reversal-invariant scoring: each n-gram and its reverse share the max weight; reads text with any words/segments reversed)\n");
         } else if (strcmp(argv[i], "-weightmono") == 0) {
             cfg.weight_monogram = atof(argv[++i]);
             printf("-weightmono %.3f\n", cfg.weight_monogram);

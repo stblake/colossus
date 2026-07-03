@@ -644,6 +644,18 @@ Recommended with higher-order n-grams (e.g. `-ngramsize 5 -ngramfile english_qui
 for hard substitution attacks; quintgrams take a homophonic solve from ~98% (quadgrams)
 to ~100%.
 
+**`-reversengrams` (a.k.a. `-revngrams`).** Opt-in **reversal-invariant** n-gram fitness:
+after `load_ngrams` builds and normalizes the table (either scoring mode above), it
+symmetrizes it so every n-gram and its **digit-reversed twin** carry the same (`max`)
+weight, controlled by the global `g_ngram_reverse`. Because a reversed word's n-grams are
+the reverses of the forward word's, a plaintext written with any words/segments **reversed**
+then scores like clean English (verified: reversed English → the *same* score as forward,
+vs the random floor without it; forward text unchanged). Intended for transposition attacks
+where the pre-transposition plaintext may have reversed runs (e.g. the W168 alternate-word-
+reversal hypothesis). Trade-off: the symmetric table can no longer tell a text from its
+reverse, so it roughly doubles the acceptable solution set (mild extra gaming room at large
+transposition keys). Default off => the table and every existing solve are **bit-identical**.
+
 Five **pure transposition** cipher types bypass the keyword/cycleword/period machinery
 and are solved by optimization instead (all isolated from the polyalphabetic pipeline by
 an early branch in `solve_cipher`):

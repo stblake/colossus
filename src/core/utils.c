@@ -20,6 +20,12 @@ double g_monograms[MAX_ALPHABET_SIZE];
 // PENALISES unseen n-grams (set via -logprob, recommended with quintgrams).
 bool g_ngram_logprob = false;
 
+// Reversal-invariant n-gram scoring (set via -reversengrams). When true, load_ngrams
+// symmetrizes the table so every n-gram and its digit-reversed twin carry the same
+// (max) weight -- a plaintext written with any words/segments reversed then scores like
+// clean English. Default false => the table and every existing solve are bit-identical.
+bool g_ngram_reverse = false;
+
 // Build the index<->char maps and the reindexed monogram table. `excluded` is a
 // string of letters to drop from the standard A..Z ordering (NULL/"" => full A..Z).
 void init_alphabet(const char *excluded) {

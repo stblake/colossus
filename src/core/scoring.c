@@ -291,6 +291,30 @@ float* load_ngrams(char *ngram_file, int ngram_size, bool verbose) {
         }
         for (i = 0; i < n_ngrams; i++) ngram_data[i] /= total;
     }
+
+    if (g_ngram_reverse) {
+        // Reversal-invariant scoring: give each n-gram and its digit-reversed twin the
+        // same (max) weight, so a plaintext written with any words/segments reversed
+        // scores like clean English (a reversed word's n-grams are the reverses of the
+        // forward word's). Applied AFTER normalization so weights are final; max makes
+        // it symmetric and order-independent. The packed index is
+        // sum digit[j]*g_alpha^j (position 0 = least significant, per ngram_score), so
+        // the reversed n-gram maps digit at j to weight g_alpha^(ngram_size-1-j).
+        float *sym = malloc(n_ngrams*sizeof(float));
+        int topw = int_pow(g_alpha, ngram_size - 1);   // g_alpha^(ngram_size-1)
+        for (i = 0; i < n_ngrams; i++) {
+            int idx = i, rev = 0, hi = topw, j;
+            for (j = 0; j < ngram_size; j++) {
+                rev += (idx % g_alpha) * hi;
+                idx /= g_alpha;
+                hi  /= g_alpha;
+            }
+            sym[i] = (ngram_data[i] > ngram_data[rev]) ? ngram_data[i] : ngram_data[rev];
+        }
+        free(ngram_data);
+        ngram_data = sym;
+    }
+
     if (verbose) printf("...finished.\n\n");
     return ngram_data;
 }

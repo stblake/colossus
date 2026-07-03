@@ -1134,6 +1134,7 @@ void print_cipher(const int indices[], int len, const SymbolTable *tab);
 // Array sizes everywhere stay ALPHABET_SIZE (26, the max); only loop bounds,
 // modular arithmetic, and the n-gram packing base use g_alpha.
 extern bool g_ngram_logprob;      // n-gram scoring mode (see utils.c); false = legacy
+extern bool g_ngram_reverse;      // reversal-invariant table (see utils.c); false = off
 extern int  g_alpha;              // runtime alphabet size (<= ALPHABET_SIZE)
 extern int  g_char_to_idx[128];   // ASCII (upper) -> alphabet index, or -1 if absent
 extern char g_idx_to_char_arr[MAX_ALPHABET_SIZE + 1];  // alphabet index -> char (room for 27)
