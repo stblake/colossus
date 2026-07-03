@@ -73,48 +73,51 @@ double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram
         cached_ngram_size = ngram_size;
     }
 
-    // Rolling base-26 index. The packed window index is little-endian
-    //   idx_i = sum_{j=0..n-1} decrypted[i+j] * 26^j,
-    // so advancing one position is exact integer arithmetic:
-    //   idx_{i+1} = (idx_i - decrypted[i]) / 26 + decrypted[i+n] * 26^(n-1).
-    // (idx_i - decrypted[i]) is divisible by 26 -- every surviving term carries a
-    // factor of 26 -- so the integer division is exact and idx_{i+1} is the SAME
-    // integer the old per-window inner loop produced. Identical index => identical
-    // ngram_data[] element => identical sum in the same order: bit-for-bit unchanged.
-    // This collapses the per-window O(ngram_size) multiply-add loop to O(1).
-    // Windows containing a negative sentinel (a space or punctuation character
-    // carried through from the ciphertext) are skipped -- only n-grams that lie
-    // wholly inside a run of letters are scored. `bad` counts the sentinels in the
-    // current window; a sentinel contributes 0 to the packed index so the rolling
-    // base-26 arithmetic stays valid across it. When the text is all letters `bad`
-    // is always 0 and every operation is bit-identical to the unguarded version.
-    int n_windows = cipher_len - ngram_size + 1;
+    // Compact the decrypted text to its LETTERS ONLY, dropping negative sentinels
+    // (spaces / punctuation carried through from the ciphertext). n-grams are then
+    // formed from CONSECUTIVE LETTERS, so a sentinel is transparent to the window
+    // ("THE MOST" -> THEMO, HEMOS, ...) rather than voiding every window that spans
+    // it. This is the fix for space-bearing transpositions: with a space every few
+    // characters the old "skip any window containing a sentinel" rule discarded
+    // almost every window, flattening the fitness landscape so the climber had no
+    // gradient (AZDecrypt-style solvers score the space as a symbol instead). Word-
+    // boundary (space-placement) signal is supplied separately by the dictionary
+    // word-coverage term (-weightword). The sentinel COUNT is invariant under a
+    // transposition (the same multiset is permuted), so `m` is constant across every
+    // candidate decrypt of a given cipher -- the normalisation below never changes
+    // which solution wins. When the text is all letters the compaction is the
+    // identity, `m == cipher_len`, and every step is bit-for-bit identical to the
+    // historical scorer (same indices, same additions, same order, same divisor).
+    static int letters[MAX_CIPHER_LENGTH];
+    int m = 0;
+    for (int i = 0; i < cipher_len; i++)
+        if (decrypted[i] >= 0) letters[m++] = decrypted[i];
+
+    // Rolling base-26 index over the compacted stream. The packed window index is
+    // little-endian idx_i = sum_{j} letters[i+j] * 26^j, so advancing one position
+    // is exact integer arithmetic:
+    //   idx_{i+1} = (idx_i - letters[i]) / 26 + letters[i+n] * 26^(n-1).
+    // (idx_i - letters[i]) is divisible by 26, so the integer division is exact.
+    int n_windows = m - ngram_size + 1;
     if (n_windows > 0) {
         int top = 1;                    // 26^(ngram_size-1)
         for (int j = 0; j < ngram_size - 1; j++) top *= g_alpha;
 
         index = 0;
         base = 1;
-        int bad = 0;
         for (int j = 0; j < ngram_size; j++) {
-            int v = decrypted[j];
-            if (v < 0) { bad++; v = 0; }
-            index += v*base;
+            index += letters[j]*base;
             base *= g_alpha;
         }
-        if (bad == 0) score += ngram_data[index];
+        score += ngram_data[index];
 
         for (int i = 1; i < n_windows; i++) {
-            int out_v = decrypted[i - 1];
-            int in_v  = decrypted[i + ngram_size - 1];
-            if (out_v < 0) { bad--; out_v = 0; }
-            int in_iv = in_v;
-            if (in_v < 0) { bad++; in_iv = 0; }
-            index = (index - out_v) / g_alpha + in_iv * top;
-            if (bad == 0) score += ngram_data[index];
+            index = (index - letters[i - 1]) / g_alpha + letters[i + ngram_size - 1] * top;
+            score += ngram_data[index];
         }
     }
-    score = scale*score/(cipher_len - ngram_size);
+    int denom = m - ngram_size;
+    score = (denom > 0) ? scale*score/denom : 0.0;
     return score;
 }
 

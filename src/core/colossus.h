@@ -87,6 +87,7 @@
 #define INTERRUPTED_KEY_BEAU 68  // Interrupted Key, Beaufort base (C = k - P, reciprocal)
 #define CONDI              69  // Condi: plaintext-feedback substitution over a keyed alphabet (shift = position of the previous plaintext letter)
 #define FRAC_MORSE         70  // Fractionated Morse: Morse fractionation over a keyed 26-letter alphabet (trigraph substitution)
+#define PERIOD_COLUMN      71  // Period column order: periodic-column-permutation transposition (AZdecrypt), composable
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 
@@ -393,6 +394,7 @@ typedef struct {
     bool crib_anchored;  // -cribanchored: pin crib-implied positions in the transposition search
     float weight_word;   // optional dictionary word-fraction reward (default 0 => unused)
     int tile_h, tile_w;  // sub-grid tile shape for TRANSTILE (default 2x2)
+    int trans_depth;     // PERIOD_COLUMN: max composed stages to search (default 2)
 
     // Nicodemus block height (rows per block). block_height > 0 pins a single height;
     // 0 => sweep [2 .. max_block_height]. max_block_height 0 => default top of the sweep.
@@ -779,6 +781,17 @@ void decrypt_columnar_tracked(int cipher[], int len, int K, int order[], int dir
 // row-major. Complete grid only (len % W == 0). out[] must not alias cipher[].
 void decrypt_tile(int cipher[], int len, int W, int order[], int h, int w,
                   int perm[], int out[]);
+
+// Period column order transposition primitive (one stage; AZdecrypt's "Period column
+// order"). The input is laid row-major into a `dx`-wide grid of `dy = ceil(len/dx)`
+// rows; its columns are reordered by a periodic schedule of period `p` (visit columns
+// 0, p, 2p, ..., then 1, 1+p, ..., i.e. `for i in 0..p-1: for j = i; j < dx; j += p`),
+// then the grid is read back row-major, skipping the (dx*dy - len) padding cells. `utp`
+// selects the transform (0) or its exact inverse (1). Values are carried opaquely
+// (letters 0..g_alpha-1 AND negative space/punctuation sentinels ride through), so it
+// composes with the transposition pipeline. Length-preserving; `out` must not alias
+// `in`. A complete grid (len % dx == 0) makes utp==1 the bit-exact inverse of utp==0.
+void period_column_transform(const int *in, int *out, int len, int dx, int p, int utp);
 
 // Number of geometric routes recognised by route_cells()/decrypt_route().
 #define N_ROUTES 6

@@ -435,6 +435,7 @@ double run_solver(const CipherModel *m, SolverCtx *ctx) {
     static SolverConfig configs[MAX_SOLVER_CONFIGS];
     static SolverState best_state, cand_state;
     static int best_decrypted[MAX_CIPHER_LENGTH], cand_decrypted[MAX_CIPHER_LENGTH];
+    static int sweep_best_decrypted[MAX_CIPHER_LENGTH];
     // Optimal-cycleword histogram scratch, owned by the engine (single-threaded).
     static int hist_by_col[MAX_CYCLEWORD_LEN * ALPHABET_SIZE];
     ctx->hist_by_col = hist_by_col;
@@ -453,11 +454,28 @@ double run_solver(const CipherModel *m, SolverCtx *ctx) {
 
         double sc;
         if (m->key_len && m->key_len(ctx, cc) == 0) {
-            // SWEEP cell: the config itself is the candidate (one decrypt+score).
-            double adjust = 0.0;
-            m->seed(ctx, cc, &cand_state);
-            m->decrypt(ctx, cc, &cand_state, cand_decrypted, &adjust);
-            sc = engine_score(ctx, cand_decrypted, adjust);
+            // SWEEP cell: the config carries no searched key, so a single
+            // decrypt+score fully evaluates it. But colossus is a stochastic
+            // hill climber WITH RESTARTS, and -nrestarts must never be inert
+            // for any model, so the requested restart budget drives this branch
+            // too: each restart re-seeds and re-evaluates, and the best sample
+            // is kept. (route/railfence seed deterministically, so their
+            // complete sweep is re-confirmed per restart; a model with a
+            // stochastic seed would draw an independent sample each time.)
+            int nrs = ctx->cfg->n_restarts;
+            if (nrs < 1) nrs = 1;
+            sc = 0.0;
+            for (int rs = 0; rs < nrs; rs++) {
+                double adjust = 0.0;
+                m->seed(ctx, cc, &cand_state);
+                m->decrypt(ctx, cc, &cand_state, cand_decrypted, &adjust);
+                double s = engine_score(ctx, cand_decrypted, adjust);
+                if (rs == 0 || s > sc) {
+                    sc = s;
+                    vec_copy(cand_decrypted, sweep_best_decrypted, ctx->cipher_len);
+                }
+            }
+            vec_copy(sweep_best_decrypted, cand_decrypted, ctx->cipher_len);
         } else {
             sc = run_one_config(m, ctx, cc, &cand_state, cand_decrypted);
         }

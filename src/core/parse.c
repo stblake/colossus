@@ -238,6 +238,10 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "fractionated-morse") || str_eq(arg, "fracmorse") ||
         str_eq(arg, "fmorse") || str_eq(arg, "fm")) return FRAC_MORSE;
 
+    // Period column order transposition (AZdecrypt's "Period column order"; composable).
+    if (str_eq(arg, "period-column") || str_eq(arg, "periodcol") ||
+        str_eq(arg, "pcol") || str_eq(arg, "transpercol")) return PERIOD_COLUMN;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }

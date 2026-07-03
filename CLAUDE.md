@@ -92,6 +92,11 @@ src/transposition/    # pure-transposition solvers + shared helpers
                                #   also the structural -cribanchored block<->column matcher
   route_chain_solver.c/.h      # transroutecol: fixed read-route global + searched column key (seam best-L)
   tile_solver.c/.h             # transtile: sub-grid h x w tile transposition (joint column-order + tile perm)
+  period_column.c              # period_column_transform(): AZdecrypt's "Period column order" -- one
+                               #   periodic column-permutation transposition stage (complete + incomplete grids)
+  period_column_solver.c/.h    # period-column: DETERMINISTIC EXHAUSTIVE solver -- tries every complete-grid
+                               #   stage (depth 1) and every ordered pair (depth 2), n-gram-scores each, keeps
+                               #   the global best (reproduces AZdecrypt's stacked "Period column order" solutions)
   # trans_common.c also carries the shared exact-ordering helpers: held_karp_best_path()
   #   (max-weight Hamiltonian path) and seam_best_row_order() (exact best within-column
   #   track order L via a per-row + seam-delta decomposition), plus trans_word_set().
@@ -206,6 +211,7 @@ tools/progkey_gen.c          # standalone Progressive Key generator (make progke
 tools/intkey_gen.c           # standalone Interrupted Key generator (make intkey_gen)
 tools/condi_gen.c            # standalone Condi generator (make condi_gen)
 tools/fracmorse_gen.c        # standalone Fractionated Morse generator (make fracmorse_gen)
+tools/period_column_gen.c    # standalone Period column order generator (make period_column_gen; space-aware)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
 ciphers/kryptos/     # K1–K4 ciphertexts + run scripts
@@ -376,7 +382,15 @@ trigraph rank `9a+3b+c`, the padding and the keyed-alphabet map; agreement with 
 reference encrypt (a fresh implementation, own Morse table) over random plaintexts/keys; encrypt→decrypt
 round-trips == identity over random permutations σ × lengths (incl. the three padding residues, single-letter,
 and all-`E`/all-`T` extremes); and the invalid-token path — a run of >4 dots is not a legal codeword → a
-filler, counted as not valid).
+filler, counted as not valid), and
+`tests/test_period_column.c` (the Period column order primitive: a tiny hand-computed KAT pinning the
+column-visit/fill/readout convention (`[0..5]` dx3 p2 → `0,2,1,3,5,4`) and its `utp` inverse; the REAL
+AZdecrypt worked example as a two-stage composition KAT — the 168-char spaced ciphertext decrypts via
+`[4x42,TP,P:3]` then `[56x3,UTP,P:2]` to `I LIKE KILLING PEOPLE …` and the inverse re-encrypts it, spaces
+included; exact `utp==0`→`utp==1` round-trip over random COMPLETE grids × periods (incl. period 1, `dx==len`,
+and negative space sentinels); and multiset-preservation over random INCOMPLETE grids — with a printed note
+that per-stage `utp` inversion holds for only ~16% of incomplete cases, the reason the solver restricts to
+complete grids).
 `make testopt` additionally runs the in-process solver regressions
 `tests/test_solver.c` (polyalphabetic), `tests/test_playfair_solver.c` (Playfair:
 validates the per-type schedule registry, asserts an 800-char capability floor, and
@@ -498,13 +512,19 @@ long move chains); a capability floor across keywords at ~150 chars (the ACA ran
 cliff (~97% at 90, ~100% from ~150); a multi-keyword sweep (mean/worst); and per-scheme calibration under
 `-method anneal/shotgun/pso` (PSO bounded — its swarm × particle × refine cost makes a large iteration budget
 pathological, so the test clamps particles/refine + a tiny budget; only anneal is asserted). The basis the
-`SearchDefaults` `16x120000` / `inittemp 0.30` schedule is tuned against).
+`SearchDefaults` `16x120000` / `inittemp 0.30` schedule is tuned against), and
+`tests/test_period_column_solver.c` (Period column order: depth-1 exact recovery across widths/periods/
+directions; depth-2 exact recovery (the AZdecrypt two-stage scenario); the REAL AZdecrypt worked example
+asserted **end to end** — the 168-char spaced ciphertext → `I LIKE KILLING PEOPLE …` with the recovered
+stages asserted `== [4x42,TP,P:3][56x3,UTP,P:2]`; and a length cliff (recovery vs length, clean from ~60).
+Since the solver is deterministic-exhaustive there is no schedule to tune — the test is a pure correctness /
+capability guard).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
 
 `ciphers/tests/run_tests.sh` is the **accuracy regression suite**: a manifest of
-72 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
+73 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
 `q*_p1xx` puzzles, pure-transposition types, a homophonic substitution, a Playfair
 cipher, a Bifid cipher, a Trifid cipher, a Hill cipher, the three Phillips
 variants — Row / Column / Row-Column — a Two-Square (horizontal + vertical), a
@@ -523,8 +543,9 @@ pinned), the three Progressive Key bases (`progkey_decl` / `progkey_var_decl` /
 (`trisquare_pride`, three keyed squares, `-logprob`), the Interrupted Key family
 (`intkey_decl` / `intkey_var_decl` / `intkey_beau_decl` — ct-interruptor, blind interruptor;
 `intkey_ptint_decl` — pt-interruptor, interruptor pinned; `intkey_breaks_decl` — supplied `-breaks`;
-all period pinned), and a Fractionated Morse cipher (`fracmorse_pride`, keyed-alphabet anneal,
-`-logprob`)) that each
+all period pinned), a Fractionated Morse cipher (`fracmorse_pride`, keyed-alphabet anneal,
+`-logprob`), and a Period column order cipher (`period_column_pp`, a two-stage 168-letter
+composition solved deterministically, `-depth 2`)) that each
 solve to ~100% with a **fixed `-seed`** and quadgrams. It runs the solver, pulls the
 recovered plaintext from the last field of the `>>>` CSV line, compares it
 character-for-character to a sibling `<name>.solution` (bare A–Z plaintext), and prints
@@ -534,8 +555,9 @@ bit-identical refactor keeps every score at 100% and any behavioural regression 
 immediately. Each test's `-nrestarts`/`-nhillclimbs` are trimmed to the smallest that
 still lands on the solution at the seed, so the full run is ~2 min (was ~45 before
 trimming). The manifest tags each case `fast` or `slow`:
-`./run_tests.sh --fast` runs the 36-case fast tier in ~60s (use while iterating; incl. the three
-~0s Progressive Key bases, the three ~0s Slidefair bases, and the five ~1s Interrupted Key cases),
+`./run_tests.sh --fast` runs the 37-case fast tier in ~62s (use while iterating; incl. the three
+~0s Progressive Key bases, the three ~0s Slidefair bases, the five ~1s Interrupted Key cases, and the
+~2s deterministic Period column order case),
 `--slow` the 32 heavier ciphers (incl. the ~24s Playfair, ~6s Bifid, ~18s Trifid, the
 three ~13s Phillips solves, the two ~10s Two-Square solves, the ~17s Four-Square, the ~20s Tri-Square, the
 ~10s ADFGX, the four ~6–8s Nihilist Substitution solves, the three ~1s Nicodemus
@@ -580,7 +602,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `interrupted-key`/`intkey`/`ik`/`66`, `interrupted-key-var`/`intkey-var`/`ikv`/`67`,
 `interrupted-key-beau`/`intkey-beau`/`ikb`/`68`,
 `condi`/`cond`/`69`,
-`fractionated-morse`/`fracmorse`/`fmorse`/`fm`/`70`
+`fractionated-morse`/`fracmorse`/`fmorse`/`fm`/`70`,
+`period-column`/`periodcol`/`pcol`/`transpercol`/`71`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1180,6 +1203,43 @@ single config, no sweep), tuned against `tests/test_fracmorse_solver.c` (which r
 anneal|shotgun|pso` all run on it (PSO is bounded/weak here — the swarm × particle × refine cost makes a
 large iteration budget pathological, so the test clamps it). Generate test ciphers with
 `tools/fracmorse_gen.c` (`make fracmorse_gen`; args are a plaintext and a keyword).
+
+The **Period column order** type (`period-column`/`periodcol`/`pcol`/`transpercol`/`71`;
+`solve_period_column()` + `period_column_search()` in `period_column_solver.c`) is AZdecrypt's
+**"Period column order"** transposition — a **columnar transposition whose column permutation is fixed
+by a PERIOD, not a keyword**. The message is laid row-major into a `dx`-wide grid of `dy = ceil(len/dx)`
+rows; the columns are visited in the periodic order `0, p, 2p, … , 1, 1+p, … , 2, …` (`for i in 0..p-1:
+for j = i; j < dx; j += p`) and the k-th visited column receives (`utp==0`, "TP") / supplies (`utp==1`,
+"UTP") the natural k-th column; the grid is read back row-major, **skipping the padding cells**, so it is
+exactly length-preserving. The primitive (`period_column.c`, a faithful port of AZdecrypt's case 13,
+hand-verified cell-for-cell — the 168-char worked example `I LIKE KILLING PEOPLE …` decrypts via
+`[4x42,TP,P:3]` then `[56x3,UTP,P:2]`) carries **spaces/punctuation as genuine grid cells** (they ride
+through the permutation like letters), so it composes with the transposition pipeline; `PERIOD_COLUMN` is
+therefore in the **space-significant** set (a trailing space is a real cell). Because a single stage's key
+is tiny — a **complete-grid width `dx | len` in `[3, len]`**, a **period `p ∈ [2, dx-1]`**, and the TP/UTP
+flag — the whole single-stage keyspace is enumerable and a **composition of two stages** is enumerable as
+the product; so the solver is **DETERMINISTIC and EXHAUSTIVE**, NOT a hill climber: it tries every stage
+(depth 1) and every ordered pair (depth 2), scores each decrypt with the shared reward-only quadgram
+fitness (`state_score`, **no `-logprob`** — a transposition preserves letter frequencies), and keeps the
+**global best** (`-depth` pins 1 or 2, default 2 — the depth-2 search includes all depth-1 solutions). This
+is the right shape because a wrong stage yields **no n-gram gradient** (a needle), so a stochastic climber
+would flail where exhaustive enumeration is guaranteed and, for a few-hundred-char cipher, sub-second
+(depth 2 is `O(K²)` decrypt+score over `K` ≈ a few hundred to a couple thousand stages; `PC_MAX_STAGE_LIST`
+clamps pathologically composite lengths). It is a **dedicated solver, NOT a `CipherModel`** (no engine
+schedule / `SearchDefaults` entry — there is nothing to anneal), dispatched by its own early branch in
+`solve_cipher`. **Widths are complete-grid divisors only** (`dx | len`): the primitive handles incomplete
+grids for faithfulness, but per-stage inversion (`utp==1` == inverse of `utp==0`) is exact **only** on a
+complete grid, so the solver restricts to those (the vast majority of real puzzles; the motivating cipher is
+`6×28 = 168`). Cribs are supported positionally (blended via `state_score` when supplied) but not required.
+This is the solver that **reproduces AZdecrypt end-to-end** on the transposed Zodiac-style plaintext that
+colossus's free-permutation and keyword-columnar solvers could not (they don't model the composed
+period-column structure). Generate test ciphers with `tools/period_column_gen.c` (`make period_column_gen`;
+args are a plaintext then one or more `<dx> <period> <tp|utp>` stage triples; it carries spaces, so the
+plaintext may contain them). Unit tests: `tests/test_period_column.c` (primitive — the tiny hand KAT, the
+full AZ 168-char composition KAT with spaces, exact round-trip over random complete grids, multiset
+preservation over incomplete grids) and `tests/test_period_column_solver.c` (depth-1/depth-2 exact
+recovery, the AZ worked example asserted end-to-end with the recovered stages, and a length cliff);
+`ciphers/tests/run_tests.sh` carries `period_column_pp` (a two-stage 168-letter case, ~100%).
 
 The **Slidefair** family (`slidefair`/`sf`/`59`, `slidefair-var`/`sfv`/`60`, `slidefair-beau`/`sfb`/`61`;
 `solve_slidefair()`, `SLIDEFAIR_MODEL`, `SHAPE_ANNEAL`) is the ACA **periodic DIGRAPHIC
