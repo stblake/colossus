@@ -1,6 +1,7 @@
 #include "period_column_solver.h"
 #include "scoring.h"
 #include "trans_common.h"
+#include <time.h>
 
 // =====================================================================
 //  Period column order transposition solver -- see period_column_solver.h
@@ -80,16 +81,23 @@ double period_column_search(const int *cipher, int len, int max_depth,
     return best;
 }
 
-// Format "[4x42,TP,P:3][56x3,UTP,P:2]" for the report / >>> CSV param field.
+// Format "[4x42,TP,P:3][56x3,UTP,P:2]" (with an optional "dir=bt " prefix when the
+// cipher was read in reverse) for the report / >>> CSV param field.
 static void pc_param_summary(int len, const PCStage *stages, int n_stages,
-                             char *buf, size_t n) {
+                             int read_dir, char *buf, size_t n) {
     size_t off = 0;
+    if (read_dir == COL_READ_BT) off += snprintf(buf + off, n - off, "dir=bt ");
     off += snprintf(buf + off, n - off, "depth=%d ", n_stages);
     for (int s = 0; s < n_stages && off < n; s++) {
         int dx = stages[s].dx, dy = (len + dx - 1) / dx;
         off += snprintf(buf + off, n - off, "[%dx%d,%s,P:%d]",
                         dx, dy, stages[s].utp == 0 ? "TP" : "UTP", stages[s].period);
     }
+}
+
+// Reverse cipher[0..len-1] into out (read the stream bottom-to-top / backwards).
+static void pc_reverse(const int *cipher, int len, int *out) {
+    for (int i = 0; i < len; i++) out[i] = cipher[len - 1 - i];
 }
 
 void solve_period_column(char *ciphertext_str, char *cribtext_str,
@@ -111,26 +119,79 @@ void solve_period_column(char *ciphertext_str, char *cribtext_str,
         max_depth = 2;
     }
 
-    static int best_decrypted[MAX_CIPHER_LENGTH];
-    PCStage stages[2];
-    int n_stages = 0;
-    double score = period_column_search(cipher_indices, cipher_len, max_depth,
-        shared->ngram_data, cfg->ngram_size,
-        crib_indices, crib_positions, n_cribs,
-        cfg->weight_ngram, cfg->weight_crib,
-        best_decrypted, stages, &n_stages);
+    // Read direction: forwards (tb, canonical) and/or the reversed stream (bt).
+    // Default is COL_READ_TB, so a normal run is one forward search -- bit-identical
+    // to before. -readdir bt reads the cipher backwards; -readdir both tries each.
+    int dirs[2], ndirs = 0;
+    if (cfg->read_direction == COL_READ_BOTH) { dirs[ndirs++] = COL_READ_TB; dirs[ndirs++] = COL_READ_BT; }
+    else dirs[ndirs++] = cfg->read_direction;
 
-    char params[128];
-    pc_param_summary(cipher_len, stages, n_stages, params, sizeof params);
-
-    printf("\nperiod-column: %d composed stage(s) (widths are complete-grid divisors of %d)\n",
-           n_stages, cipher_len);
-    for (int s = 0; s < n_stages; s++) {
-        int dx = stages[s].dx, dy = (cipher_len + dx - 1) / dx;
-        printf("  stage %d: %d x %d grid, period %d, %s\n", s + 1, dx, dy,
-               stages[s].period, stages[s].utp == 0 ? "transpose" : "untranspose");
+    // -verbose: describe the (deterministic, exhaustive) search space up front so
+    // the run isn't a silent block until the final report.
+    if (cfg->verbose) {
+        int nwidths = 0, nstage = 0;
+        printf("\nperiod-column: exhaustive depth-%d search; complete-grid widths dx | %d in [3,%d]:",
+               max_depth, cipher_len, cipher_len);
+        for (int dx = 3; dx <= cipher_len; dx++)
+            if (cipher_len % dx == 0) { printf(" %d", dx); nwidths++; nstage += 2 * (dx - 2); }
+        printf("\n  %d width(s), %d candidate stage(s) => depth-1 = %d, depth-2 = %d decrypt+score(s) per direction\n",
+               nwidths, nstage, nstage, max_depth >= 2 ? nstage * nstage : 0);
+        printf("  read direction(s):");
+        for (int d = 0; d < ndirs; d++) printf(" %s", dirs[d] == COL_READ_BT ? "bt" : "tb");
+        printf("\n");
     }
 
-    report_transposition(cfg, shared, cipher_indices, cipher_len, best_decrypted,
+    static int best_decrypted[MAX_CIPHER_LENGTH], oriented[MAX_CIPHER_LENGTH];
+    static int best_cipher[MAX_CIPHER_LENGTH], dec[MAX_CIPHER_LENGTH];
+    PCStage stages[2], best_stages[2];
+    int n_stages = 0, best_ns = 0, best_dir = COL_READ_TB;
+    double score = -1e30;
+    clock_t t0 = clock();
+
+    for (int d = 0; d < ndirs; d++) {
+        if (dirs[d] == COL_READ_BT) pc_reverse(cipher_indices, cipher_len, oriented);
+        else for (int i = 0; i < cipher_len; i++) oriented[i] = cipher_indices[i];
+
+        int ns = 0;
+        double s = period_column_search(oriented, cipher_len, max_depth,
+            shared->ngram_data, cfg->ngram_size,
+            crib_indices, crib_positions, n_cribs,
+            cfg->weight_ngram, cfg->weight_crib,
+            dec, stages, &ns);
+
+        if (cfg->verbose) {
+            // Engine-style running block: timing, score, params, then the current
+            // best plaintext for this read direction.
+            char p[128];
+            pc_param_summary(cipher_len, stages, ns, dirs[d], p, sizeof p);
+            double elapsed = ((double) clock() - t0) / CLOCKS_PER_SEC;
+            printf("\n%.2f\t[sec]\n", elapsed);
+            printf("%.4f\t[entropy]\n", entropy(dec, cipher_len));
+            printf("%.2f\t[score]\n", s);
+            printf("%s\t[params]\n\n", p);
+            print_text(dec, cipher_len); printf("\n");
+            fflush(stdout);
+        }
+
+        if (d == 0 || s > score) {
+            score = s; best_ns = ns; best_dir = dirs[d];
+            for (int i = 0; i < cipher_len; i++) { best_decrypted[i] = dec[i]; best_cipher[i] = oriented[i]; }
+            best_stages[0] = stages[0]; best_stages[1] = stages[1];
+        }
+    }
+    n_stages = best_ns;
+
+    char params[128];
+    pc_param_summary(cipher_len, best_stages, n_stages, best_dir, params, sizeof params);
+
+    printf("\nperiod-column: %d composed stage(s), read %s (widths are complete-grid divisors of %d)\n",
+           n_stages, best_dir == COL_READ_BT ? "bottom-to-top" : "top-to-bottom", cipher_len);
+    for (int s = 0; s < n_stages; s++) {
+        int dx = best_stages[s].dx, dy = (cipher_len + dx - 1) / dx;
+        printf("  stage %d: %d x %d grid, period %d, %s\n", s + 1, dx, dy,
+               best_stages[s].period, best_stages[s].utp == 0 ? "transpose" : "untranspose");
+    }
+
+    report_transposition(cfg, shared, best_cipher, cipher_len, best_decrypted,
         score, cribtext_str, n_cribs, params);
 }

@@ -88,6 +88,7 @@
 #define CONDI              69  // Condi: plaintext-feedback substitution over a keyed alphabet (shift = position of the previous plaintext letter)
 #define FRAC_MORSE         70  // Fractionated Morse: Morse fractionation over a keyed 26-letter alphabet (trigraph substitution)
 #define PERIOD_COLUMN      71  // Period column order: periodic-column-permutation transposition (AZdecrypt), composable
+#define PERIOD_COLUMN_SPACE 72 // Period column order, space-robust: inserts searched blank/gap cells (dropped-char repair)
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 
@@ -395,6 +396,8 @@ typedef struct {
     float weight_word;   // optional dictionary word-fraction reward (default 0 => unused)
     int tile_h, tile_w;  // sub-grid tile shape for TRANSTILE (default 2x2)
     int trans_depth;     // PERIOD_COLUMN: max composed stages to search (default 2)
+    int max_gaps;        // PERIOD_COLUMN_SPACE: max blank/gap cells to INSERT (dropped-char repair; default 4)
+    int max_dels;        // PERIOD_COLUMN_SPACE: max observed cells to DELETE (added-char repair; default 2)
 
     // Nicodemus block height (rows per block). block_height > 0 pins a single height;
     // 0 => sweep [2 .. max_block_height]. max_block_height 0 => default top of the sweep.

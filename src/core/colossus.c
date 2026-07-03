@@ -207,6 +207,7 @@
 #include "route_chain_solver.h"
 #include "tile_solver.h"
 #include "period_column_solver.h"
+#include "period_column_space_solver.h"
 #include "railfence_solver.h"
 #include "route_solver.h"
 #include "amsco_solver.h"
@@ -334,6 +335,8 @@ void init_config(ColossusConfig *cfg) {
     cfg->weight_word = 0.0;            // dictionary word-fraction reward off => bit-identical scoring
     cfg->tile_h = 2; cfg->tile_w = 2;  // default sub-grid tile shape for TRANSTILE
     cfg->trans_depth = 2;              // PERIOD_COLUMN: search compositions up to 2 stages
+    cfg->max_gaps = 4;                 // PERIOD_COLUMN_SPACE: default blank/gap insertion budget
+    cfg->max_dels = 2;                 // PERIOD_COLUMN_SPACE: default observed-cell deletion budget
 
     cfg->delimiter = 0;                 // 0 => per-character / 0..25 letter decode (ord())
     cfg->delimiter_present = false;
@@ -682,6 +685,16 @@ int main(int argc, char **argv) {
             // (1 or 2; exhaustive). Default 2.
             cfg.trans_depth = atoi(argv[++i]);
             printf("-depth %d\n", cfg.trans_depth);
+        } else if (strcmp(argv[i], "-maxgaps") == 0) {
+            // PERIOD_COLUMN_SPACE: max number of blank/gap cells the solver may
+            // insert (dropped-character repair / grid re-factorisation). Default 4.
+            cfg.max_gaps = atoi(argv[++i]);
+            printf("-maxgaps %d\n", cfg.max_gaps);
+        } else if (strcmp(argv[i], "-maxdels") == 0) {
+            // PERIOD_COLUMN_SPACE: max number of observed cells the solver may
+            // delete (spuriously-added-character repair). Default 2.
+            cfg.max_dels = atoi(argv[++i]);
+            printf("-maxdels %d\n", cfg.max_dels);
         } else if (strcmp(argv[i], "-period") == 0) {
             // Bifid/Trifid: pin the fractionation period (block size) vs estimating it.
             cfg.period_present = true;
@@ -787,6 +800,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a sub-grid / tile transposition (uniform h x w tile cell permutation).\n\n");
     } else if (cfg.cipher_type == PERIOD_COLUMN) {
         printf("\nAttacking a period column order transposition (periodic column permutation, composable to 2 stages).\n\n");
+    } else if (cfg.cipher_type == PERIOD_COLUMN_SPACE) {
+        printf("\nAttacking a period column order transposition, space-robust (inserts searched blank/gap cells for dropped-character repair).\n\n");
     } else if (cfg.cipher_type == RAILFENCE) {
         printf("\nAttacking a rail fence transposition cipher (rail-count + phase enumeration).\n\n");
     } else if (cfg.cipher_type == ROUTE) {
@@ -1102,7 +1117,8 @@ int main(int argc, char **argv) {
         int t = cfg.cipher_type;
         bool space_significant = (t >= TRANSMATRIX && t <= GRILLE) ||
                                  (t >= TRANSCOL_L && t <= TRANSTILE) ||
-                                 (t == PERIOD_COLUMN);
+                                 (t == PERIOD_COLUMN) ||
+                                 (t == PERIOD_COLUMN_SPACE);
         if (!space_significant)
             while (ci > 0 && isspace((unsigned char) single_ciphertext_buffer[ci - 1]))
                 single_ciphertext_buffer[--ci] = '\0';
@@ -1214,6 +1230,11 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     }
     if (cfg->cipher_type == PERIOD_COLUMN) {
         solve_period_column(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
+        return ;
+    }
+    if (cfg->cipher_type == PERIOD_COLUMN_SPACE) {
+        solve_period_column_space(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
         return ;
     }

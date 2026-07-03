@@ -242,6 +242,12 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "period-column") || str_eq(arg, "periodcol") ||
         str_eq(arg, "pcol") || str_eq(arg, "transpercol")) return PERIOD_COLUMN;
 
+    // Period column order, space-robust: inserts searched blank/gap cells to repair a
+    // dropped character / re-factorise the grid (spaces kept, never stripped).
+    if (str_eq(arg, "period-column-space") || str_eq(arg, "periodcol-space") ||
+        str_eq(arg, "pcol-space") || str_eq(arg, "pcolspace") ||
+        str_eq(arg, "pcolsp") || str_eq(arg, "transpercolspace")) return PERIOD_COLUMN_SPACE;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }

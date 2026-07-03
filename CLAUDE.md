@@ -96,7 +96,13 @@ src/transposition/    # pure-transposition solvers + shared helpers
                                #   periodic column-permutation transposition stage (complete + incomplete grids)
   period_column_solver.c/.h    # period-column: DETERMINISTIC EXHAUSTIVE solver -- tries every complete-grid
                                #   stage (depth 1) and every ordered pair (depth 2), n-gram-scores each, keeps
-                               #   the global best (reproduces AZdecrypt's stacked "Period column order" solutions)
+                               #   the global best (reproduces AZdecrypt's stacked "Period column order" solutions);
+                               #   honours -readdir tb|bt|both (forward / reversed cipher stream)
+  period_column_space_solver.c/.h # period-column-space: space-robust variant for POORLY enciphered text --
+                               #   keeps the observed cipher (spaces intact) but searches FROM SCRATCH over
+                               #   INSERTING blank/gap cells (dropped-char repair) and DELETING observed cells
+                               #   (added-char repair); a restart+anneal edit search whose fitness is the
+                               #   exhaustive period-column search (depth-1 inner, depth-<=2 final); -readdir too
   # trans_common.c also carries the shared exact-ordering helpers: held_karp_best_path()
   #   (max-weight Hamiltonian path) and seam_best_row_order() (exact best within-column
   #   track order L via a per-row + seam-delta decomposition), plus trans_word_set().
@@ -518,7 +524,13 @@ directions; depth-2 exact recovery (the AZdecrypt two-stage scenario); the REAL 
 asserted **end to end** — the 168-char spaced ciphertext → `I LIKE KILLING PEOPLE …` with the recovered
 stages asserted `== [4x42,TP,P:3][56x3,UTP,P:2]`; and a length cliff (recovery vs length, clean from ~60).
 Since the solver is deterministic-exhaustive there is no schedule to tune — the test is a pure correctness /
-capability guard).
+capability guard), and
+`tests/test_period_column_space_solver.c` (Period column order, space-robust: the `(0,0)` superset check —
+a CLEAN cipher recovers exactly, so the solver is a strict superset of the deterministic one; a **dropped-
+character** repair — delete one cipher cell, the solver INSERTS a gap restoring the length and recovers all
+but the lost letter; a two-dropped-character floor; and an **added-character** repair — splice a spurious
+letter, the solver DELETES exactly that cell and recovers the plaintext 100%. All over a 168-cell spaced
+plaintext at a fixed seed, so recovery is deterministic; trimmed restart/climb budgets keep it ~25s).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
@@ -603,7 +615,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `interrupted-key-beau`/`intkey-beau`/`ikb`/`68`,
 `condi`/`cond`/`69`,
 `fractionated-morse`/`fracmorse`/`fmorse`/`fm`/`70`,
-`period-column`/`periodcol`/`pcol`/`transpercol`/`71`
+`period-column`/`periodcol`/`pcol`/`transpercol`/`71`,
+`period-column-space`/`pcol-space`/`pcolspace`/`pcolsp`/`transpercolspace`/`72`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1239,7 +1252,39 @@ plaintext may contain them). Unit tests: `tests/test_period_column.c` (primitive
 full AZ 168-char composition KAT with spaces, exact round-trip over random complete grids, multiset
 preservation over incomplete grids) and `tests/test_period_column_solver.c` (depth-1/depth-2 exact
 recovery, the AZ worked example asserted end-to-end with the recovered stages, and a length cliff);
-`ciphers/tests/run_tests.sh` carries `period_column_pp` (a two-stage 168-letter case, ~100%).
+`ciphers/tests/run_tests.sh` carries `period_column_pp` (a two-stage 168-letter case, ~100%). Both this
+solver and the space-robust one below honour **`-readdir tb|bt|both`** — the period-column read applies to
+the whole cipher **stream** (forwards = `tb`, reversed = `bt`), `both` runs each orientation and keeps the
+higher n-gram score (the winning direction is tagged `dir=bt` in the report/CSV params). Default `tb` is one
+forward search, so it is **bit-identical** to before (`period_column_pp` still 100%).
+
+The **Period column order, space-robust** type (`period-column-space`/`pcol-space`/`pcolspace`/`pcolsp`/
+`transpercolspace`/`72`; `solve_period_column_space()` + `period_column_space_search()` in
+`period_column_space_solver.c`) generalises the deterministic solver above to **POORLY enciphered**
+ciphertext — one where a few characters were accidentally **dropped** or **added**. The observed cipher is
+kept **exactly, spaces and all** (the spaces are structurally significant — they ride the transposition as
+real grid cells and a single misplaced space re-shuffles every downstream letter — so they are **never
+stripped or moved**). Instead the solver applies two **symmetric** edits, both searched **from scratch**:
+**INSERT** up to `-maxgaps` blank/gap cells (a synthesised space; repairs a **dropped** char — the observed
+stream is too short — by restoring the grid coordinates of every following cell) and **DELETE** up to
+`-maxdels` observed cells (repairs a spuriously **added** char — the stream is too long). A gap is
+transparent to the letters-only n-gram fitness but its POSITION changes the grid layout and hence the
+decrypt; both edit kinds also let the edited length reach a richer complete-grid factorisation. Because the
+edit-position space is combinatorial, this is a **stochastic** solver (unlike the deterministic base): for
+each `(n_ins, n_dels)` pair in `[0,maxgaps] × [0,maxdels]` — `(0,0)` is exactly the plain period-column
+search, so it never scores below it — the edit positions are annealed by a restart+anneal hill climb whose
+**fitness is the fast exhaustive period-column search** (depth-1 inner), and the single best edited cipher
+gets a full **`-depth` (≤2) exhaustive finish**. Rides the reward-only quadgram table (no `-logprob`);
+optional `-weightword` blends dictionary word-coverage. Honours `-nrestarts`/`-nhillclimbs`/`-inittemp`/
+`-mintemp` (the stochastic knobs) and `-readdir` (as above). **Cribs are not used** (inserted/deleted cells
+shift plaintext positions). It is a **dedicated solver, NOT a `CipherModel`**, with its own early branch in
+`solve_cipher`. Verified on synthetically corrupted ciphers: a dropped letter recovers ~all-but-one position
+by inserting one gap; a spuriously added letter recovers **100%** by deleting exactly that cell (restoring
+the original cipher). Unit tests: `tests/test_period_column_space_solver.c` (the `(0,0)` clean-cipher
+superset check, dropped-1/dropped-2 insertion repair, and added-1 deletion repair — all over a 168-cell
+spaced plaintext at a fixed seed). No generator of its own (corrupt a `period_column_gen` cipher). No
+`run_tests.sh` case (recovery of a corrupted cipher lands just under the char-for-char ~99% threshold — the
+deterministic solver test is the guard).
 
 The **Slidefair** family (`slidefair`/`sf`/`59`, `slidefair-var`/`sfv`/`60`, `slidefair-beau`/`sfb`/`61`;
 `solve_slidefair()`, `SLIDEFAIR_MODEL`, `SHAPE_ANNEAL`) is the ACA **periodic DIGRAPHIC
