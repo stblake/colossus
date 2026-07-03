@@ -238,6 +238,7 @@
 #include "cm_bifid_solver.h"
 #include "intkey_solver.h"
 #include "condi_solver.h"
+#include "fracmorse_solver.h"
 
 void init_config(ColossusConfig *cfg) {
     // Set Defaults
@@ -861,6 +862,8 @@ int main(int argc, char **argv) {
             : cfg.cipher_type == INTERRUPTED_KEY_BEAU ? "Beaufort" : "Vigenere");
     } else if (cfg.cipher_type == CONDI) {
         printf("\nAttacking a Condi cipher (plaintext-feedback substitution over a keyed alphabet).\n\n");
+    } else if (cfg.cipher_type == FRAC_MORSE) {
+        printf("\nAttacking a Fractionated Morse cipher (Morse fractionation over a keyed 26-letter alphabet).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1381,6 +1384,12 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
 
     if (cfg->cipher_type == CONDI) {
         solve_condi(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == FRAC_MORSE) {
+        solve_fracmorse(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

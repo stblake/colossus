@@ -168,6 +168,12 @@ slow | digrafid_pride | digrafid | digrafid_pride.txt | -logprob -period 5 -nres
 # pinned here (even periods are a documented ciphertext-only degeneracy) and a lean budget to keep the case
 # fast -- the blind P sweep + odd/even contrast are exercised by tests/test_cm_bifid_solver.c. Alphabet 25 (J->I).
 slow | cm_bifid_pride | cm-bifid | cm_bifid_pride.txt | -logprob -period 7 -nrestarts 4 -nhillclimbs 200000 -inittemp 0.08 -backtrackprob 0.3
+# Fractionated Morse (Morse fractionation over a keyed 26-letter alphabet; trigraph substitution, no
+# period). The alphabet is an ACA KEYED alphabet searched as such (keyword + ascending tail), so it
+# needs -logprob; the decode length varies per key, so the hook tiles the decode to the ciphertext
+# length and folds in a Morse-validity reward. Recovers well into the short ACA range -- lean budget
+# here; the length cliff + per-scheme calibration are exercised by tests/test_fracmorse_solver.c.
+slow | fracmorse_pride | fracmorse | fracmorse_pride.txt | -logprob -nrestarts 4 -nhillclimbs 60000 -inittemp 0.30 -backtrackprob 0.3
 # Progressive Key (periodic Vigenere/Variant/Beaufort + per-group constant key drift). The climbed
 # state is the P per-column base shifts (monogram-warm-started); period + progression pinned here to
 # keep the cases fast -- the blind P and blind progression sweeps are exercised by

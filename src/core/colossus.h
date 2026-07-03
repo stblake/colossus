@@ -86,6 +86,7 @@
 #define INTERRUPTED_KEY_VAR  67  // Interrupted Key, Variant base (C = P - k)
 #define INTERRUPTED_KEY_BEAU 68  // Interrupted Key, Beaufort base (C = k - P, reciprocal)
 #define CONDI              69  // Condi: plaintext-feedback substitution over a keyed alphabet (shift = position of the previous plaintext letter)
+#define FRAC_MORSE         70  // Fractionated Morse: Morse fractionation over a keyed 26-letter alphabet (trigraph substitution)
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 
@@ -1005,6 +1006,19 @@ void trifid_cube_from_keyword(const int keyword[], int kwlen, int cube[], int n)
 void digrafid_encrypt(const int plain[], int len, const int gridH[], const int gridV[], int period, int out[]);
 void digrafid_decrypt(const int cipher[], int len, const int gridH[], const int gridV[], int period, int out[]);
 void digrafid_grid_from_keyword(const int keyword[], int kwlen, int grid[], int rows, int cols, int column_major);
+
+
+// Fractionated Morse (fracmorse.c). Plaintext -> Morse with single 'x' separators -> trigraphs
+// of {DOT,DASH,X} (trigraph (a,b,c) has rank 9a+3b+c, and xxx never occurs) -> ciphertext via a
+// keyed alphabet sigma (rank -> letter). fracmorse_encrypt returns the ciphertext length C (a
+// length change from N plaintext letters). fracmorse_decrypt inverts sigma, expands to the fixed
+// 3C-symbol Morse stream, splits on x, decodes each run: a legal codeword -> its letter (a valid
+// token), else `filler` (an invalid token); it returns the letter count and reports the total /
+// legal-codeword token counts via n_tokens/n_valid (the solver's Morse-validity reward). The
+// solver needs only fracmorse_decrypt(); encrypt serves the generator + unit tests.
+int fracmorse_encrypt(const int plain[], int n, const int sigma[], int out[]);
+int fracmorse_decrypt(const int cipher[], int clen, const int sigma[], int out[],
+                      int filler, int *n_tokens, int *n_valid);
 
 
 // Hill cipher (hill.c). A polygraphic substitution: a block of k plaintext letters

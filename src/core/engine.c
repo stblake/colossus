@@ -857,6 +857,19 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 6, .s_n_hill_climbs = 60000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Fractionated Morse: a single KEYED 26-letter alphabet (keyword + ascending tail) annealed
+    // as a keyed-alphabet SEQUENCE (fracmorse_move_seq), not a free 26! permutation -- the same
+    // structured search as Digrafid, so the coarse keyword moves want a WARM temperature and short
+    // ACA ciphers want many basins tried: MANY warm restarts (24x200000, inittemp 0.30). There is
+    // NO period (one config), so unlike Digrafid the budget is not multiplied by a sweep. The tiled
+    // decode + Morse-validity reward make it effectively need -logprob. Tuned against
+    // test_fracmorse_solver.
+    { .cipher_type = FRAC_MORSE, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 16, .a_n_hill_climbs = 120000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 120, .s_n_hill_climbs = 120000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 
 bool apply_cipher_defaults(ColossusConfig *cfg, bool announce) {

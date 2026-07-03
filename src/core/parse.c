@@ -234,6 +234,10 @@ int parse_cipher_type(const char *arg) {
     // Condi (plaintext-feedback substitution over a keyed alphabet).
     if (str_eq(arg, "condi") || str_eq(arg, "cond")) return CONDI;
 
+    // Fractionated Morse (Morse fractionation over a keyed 26-letter alphabet; trigraph substitution).
+    if (str_eq(arg, "fractionated-morse") || str_eq(arg, "fracmorse") ||
+        str_eq(arg, "fmorse") || str_eq(arg, "fm")) return FRAC_MORSE;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }

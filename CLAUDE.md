@@ -163,6 +163,18 @@ src/polygraphic/      # square/cube/matrix ciphers — each: primitive + a Ciphe
                                      #   passed to the engine). Reuses bifid_build_inverse. Needs -logprob; no cribs;
                                      #   recovers from ~500 plaintext letters (the polyphonic letters spread the full
                                      #   alphabet over every position, so it is EASIER than Four-Square despite 75 cells).
+  fracmorse.c fracmorse_solver.c/.h  # Fractionated Morse: plaintext -> Morse with single 'x'
+                                     #   letter separators -> the {DOT,DASH,X} stream grouped into TRIGRAPHS (rank
+                                     #   9a+3b+c, xxx excluded) -> ciphertext via a keyed 26-letter alphabet sigma
+                                     #   (rank -> letter). A length CHANGE (N plaintext -> C ciphertext letters). NO
+                                     #   period. The alphabet is an ACA KEYED alphabet, searched AS SUCH (keyword prefix
+                                     #   + ascending tail, fracmorse_move_seq, the length-26 twin of digrafid's) -- not a
+                                     #   free 26! permutation -- so it tracks the keyword and cracks the short (~110-150-
+                                     #   letter) ACA range. The decode length VARIES per key but the engine scores a fixed
+                                     #   length, so the decrypt hook decodes to plaintext (a filler for each invalid Morse
+                                     #   token) and CYCLICALLY TILES it to the ciphertext length C; a MORSE-VALIDITY reward
+                                     #   (fraction of tokens that are legal codewords) is folded into score_adjust (à la
+                                     #   ADFGVX's IoC term). Needs -logprob; no cribs.
 
 src/substitution/     # monoalphabetic / homophonic substitution solvers
   indep_solver.c/.h homophonic_solver.c/.h   # each: a CipherModel + solve_<type>()
@@ -193,6 +205,7 @@ tools/trisquare_gen.c        # standalone Tri-Square generator (make trisquare_g
 tools/progkey_gen.c          # standalone Progressive Key generator (make progkey_gen)
 tools/intkey_gen.c           # standalone Interrupted Key generator (make intkey_gen)
 tools/condi_gen.c            # standalone Condi generator (make condi_gen)
+tools/fracmorse_gen.c        # standalone Fractionated Morse generator (make fracmorse_gen)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
 ciphers/kryptos/     # K1–K4 ciphertexts + run scripts
@@ -356,7 +369,14 @@ decrypt round-trip; agreement with an INDEPENDENT reference following the ACA ve
 linear alphabet search (no shared code) over random keyword × starter × length; encrypt/decrypt round-trips
 over random σ × starter × length incl. len=1; and edge cases — the starter-only len=1, `starter=0` self-
 encipherment, the offset-wrap self-encipherment (a previous letter at the last σ position → shift 0), and a
-cyclically shifted keyed alphabet).
+cyclically shifted keyed alphabet), and
+`tests/test_fracmorse.c` (the Fractionated Morse primitives: three HAND-COMPUTED known-answer vectors under
+the single-`x` convention — keyword `MORSE`, `SOS → MWLR`, `EE → B`, `ET → C` — pinning the Morse table, the
+trigraph rank `9a+3b+c`, the padding and the keyed-alphabet map; agreement with an INDEPENDENT in-test
+reference encrypt (a fresh implementation, own Morse table) over random plaintexts/keys; encrypt→decrypt
+round-trips == identity over random permutations σ × lengths (incl. the three padding residues, single-letter,
+and all-`E`/all-`T` extremes); and the invalid-token path — a run of >4 dots is not a legal codeword → a
+filler, counted as not valid).
 `make testopt` additionally runs the in-process solver regressions
 `tests/test_solver.c` (polyalphabetic), `tests/test_playfair_solver.c` (Playfair:
 validates the per-type schedule registry, asserts an 800-char capability floor, and
@@ -471,13 +491,20 @@ and `tests/test_condi_solver.c` (Condi: registry validation (`6x60000`) + a non-
 clear margin AND its neighbours sit near the random floor (the regression guard on the finding that the
 plaintext feedback leaves no gradient); and characterizes, printed-not-asserted, that a blind solve does not
 recover (~6%), that pinning the starter + a 12×300000 budget still does not (~4% — no budget escapes the
-needle), and the per-scheme (anneal / shotgun / pso) behaviour. The source of the Condi needle finding).
+needle), and the per-scheme (anneal / shotgun / pso) behaviour. The source of the Condi needle finding), and
+`tests/test_fracmorse_solver.c` (Fractionated Morse: registry validation (`16x120000`) + a non-registry type
+left untouched; the keyed-alphabet move INVARIANT (`fracmorse_move_seq` keeps a permutation + sorted tail over
+long move chains); a capability floor across keywords at ~150 chars (the ACA range, recovers ~100%); a length
+cliff (~97% at 90, ~100% from ~150); a multi-keyword sweep (mean/worst); and per-scheme calibration under
+`-method anneal/shotgun/pso` (PSO bounded — its swarm × particle × refine cost makes a large iteration budget
+pathological, so the test clamps particles/refine + a tiny budget; only anneal is asserted). The basis the
+`SearchDefaults` `16x120000` / `inittemp 0.30` schedule is tuned against).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
 
 `ciphers/tests/run_tests.sh` is the **accuracy regression suite**: a manifest of
-71 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
+72 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
 `q*_p1xx` puzzles, pure-transposition types, a homophonic substitution, a Playfair
 cipher, a Bifid cipher, a Trifid cipher, a Hill cipher, the three Phillips
 variants — Row / Column / Row-Column — a Two-Square (horizontal + vertical), a
@@ -493,10 +520,11 @@ pinned), the three Progressive Key bases (`progkey_decl` / `progkey_var_decl` /
 (`seriated_playfair_decl`, period pinned, `-logprob`), a Digrafid cipher
 (`digrafid_pride`, period pinned, `-logprob`), a CM Bifid cipher
 (`cm_bifid_pride`, ODD period 7 pinned, `-logprob`), a Tri-Square cipher
-(`trisquare_pride`, three keyed squares, `-logprob`), and the Interrupted Key family
+(`trisquare_pride`, three keyed squares, `-logprob`), the Interrupted Key family
 (`intkey_decl` / `intkey_var_decl` / `intkey_beau_decl` — ct-interruptor, blind interruptor;
 `intkey_ptint_decl` — pt-interruptor, interruptor pinned; `intkey_breaks_decl` — supplied `-breaks`;
-all period pinned)) that each
+all period pinned), and a Fractionated Morse cipher (`fracmorse_pride`, keyed-alphabet anneal,
+`-logprob`)) that each
 solve to ~100% with a **fixed `-seed`** and quadgrams. It runs the solver, pulls the
 recovered plaintext from the last field of the `>>>` CSV line, compares it
 character-for-character to a sibling `<name>.solution` (bare A–Z plaintext), and prints
@@ -508,10 +536,11 @@ still lands on the solution at the seed, so the full run is ~2 min (was ~45 befo
 trimming). The manifest tags each case `fast` or `slow`:
 `./run_tests.sh --fast` runs the 36-case fast tier in ~60s (use while iterating; incl. the three
 ~0s Progressive Key bases, the three ~0s Slidefair bases, and the five ~1s Interrupted Key cases),
-`--slow` the 31 heavier ciphers (incl. the ~24s Playfair, ~6s Bifid, ~18s Trifid, the
+`--slow` the 32 heavier ciphers (incl. the ~24s Playfair, ~6s Bifid, ~18s Trifid, the
 three ~13s Phillips solves, the two ~10s Two-Square solves, the ~17s Four-Square, the ~20s Tri-Square, the
 ~10s ADFGX, the four ~6–8s Nihilist Substitution solves, the three ~1s Nicodemus
-solves, the ~1s Bazeries solve, the ~3s Seriated Playfair solve, and the ~26s Digrafid solve), no flag runs both.
+solves, the ~1s Bazeries solve, the ~3s Seriated Playfair solve, the ~26s Digrafid solve, and the ~3s
+Fractionated Morse solve), no flag runs both.
 Add a case by appending a
 `tier|name|type|cipher|args` line and running `./run_tests.sh --generate <name>`
 once the recovered text is verified correct.
@@ -550,7 +579,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `trisquare`/`tri-square`/`3square`/`3sq`/`trisq`/`65`,
 `interrupted-key`/`intkey`/`ik`/`66`, `interrupted-key-var`/`intkey-var`/`ikv`/`67`,
 `interrupted-key-beau`/`intkey-beau`/`ikb`/`68`,
-`condi`/`cond`/`69`
+`condi`/`cond`/`69`,
+`fractionated-morse`/`fracmorse`/`fmorse`/`fm`/`70`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1117,6 +1147,40 @@ model implements `seed`/`perturb`/`copy`, `-method anneal|shotgun|pso` all run o
 ciphers with `tools/condi_gen.c` (`make condi_gen`; args are a plaintext, a keyword, a starter, and an
 optional cyclic shift of the keyed alphabet).
 
+The **Fractionated Morse** type (`fractionated-morse`/`fracmorse`/`fmorse`/`fm`/`70`;
+`solve_fracmorse()`, `FRACMORSE_MODEL`, `SHAPE_ANNEAL`) is the ACA **"Fractionated Morse"** — the first
+**Morse-fractionation** type. The plaintext is written in Morse with a **single `x` separator between
+letters** (Colossus works on bare A–Z, so the ACA `xx`-between-words convention does not apply — external
+worked examples that use word divisions will NOT match byte-for-byte), the `{DOT,DASH,X}` stream is padded
+with trailing `x` to a multiple of 3 (the body has only single-`x` separators, so the run `xxx` can never
+occur) and grouped into **trigraphs**; each trigraph `(a,b,c)` has **rank `r = 9a+3b+c`** (base 3,
+`DOT<DASH<X`), and since `xxx` = rank 26 never occurs every group has `r ∈ 0..25`, mapped to a ciphertext
+letter through a **keyed 26-letter alphabet σ** (rank → letter). This is a **length CHANGE** (N plaintext
+→ C ciphertext letters) and there is **NO period** (the grouping is fixed at 3; full 26-letter alphabet,
+no J→I). The primitive (`fracmorse.c`, hand-verified against KATs computed under the single-`x`
+convention — keyword `MORSE`, `SOS → MWLR`, `EE → B`, `ET → C`) is table-free for the rank math and keeps
+the Morse stream in a file-static scratch. **The key design points:** (1) the alphabet is an ACA **KEYED
+alphabet**, searched **as such** — the state `st->key` **is σ** (a keyed-alphabet sequence, keyword prefix
+`st->aux[0]` + ascending tail) perturbed by `fracmorse_move_seq`, the length-26 twin of `digrafid_move_seq`
+(4% grow/shrink kw, 48% keyword↔tail + re-sort tail, 48% in-keyword reorder), seeded by `random_keyword`
+with `kw` sampled per restart from `[FM_KW_MIN..FM_KW_MAX]=[3..13]` — **not** a free 26! permutation, which
+collapses the keyspace and (like Digrafid) tracks the keyword so it cracks the **short ~110–150-letter ACA
+range** reliably (the free permutation is still reachable at kw=26). (2) **Length handling:** the decoded
+plaintext length varies per key but the engine scores a fixed length, so the decrypt hook decodes to
+plaintext (a **filler** letter for each **invalid** Morse token — a run that is not a legal codeword) and
+**cyclically TILES** it to the ciphertext length `C` so the mean n-gram score is length-fair across keys;
+a **MORSE-VALIDITY reward** (`FM_VALID_WEIGHT * n_valid/n_tokens`) is folded into `score_adjust` (the
+analog of ADFGVX's IoC term), giving the anneal a structural gradient toward clean-Morse keys. The
+report/`>>>` CSV/`result` carry a **clean re-decode** (the real N letters), not the tiled buffer, so
+`run_tests.sh`'s char-compare against `.solution` works. It effectively needs **`-logprob`**; **cribs are
+NOT used** (the length change + tiling break the positional mapping). Its registry schedule is
+`16x120000` at a **warm `inittemp 0.30`** (the keyed-alphabet moves are coarse, RESTARTS are the lever;
+single config, no sweep), tuned against `tests/test_fracmorse_solver.c` (which recovers ~100% at the ACA
+~150-char range, ~97% at 90). Because the model implements `seed`/`perturb`/`copy`, `-method
+anneal|shotgun|pso` all run on it (PSO is bounded/weak here — the swarm × particle × refine cost makes a
+large iteration budget pathological, so the test clamps it). Generate test ciphers with
+`tools/fracmorse_gen.c` (`make fracmorse_gen`; args are a plaintext and a keyword).
+
 The **Slidefair** family (`slidefair`/`sf`/`59`, `slidefair-var`/`sfv`/`60`, `slidefair-beau`/`sfb`/`61`;
 `solve_slidefair()`, `SLIDEFAIR_MODEL`, `SHAPE_ANNEAL`) is the ACA **periodic DIGRAPHIC
 Vigenère/Variant/Beaufort** — the digraphic sibling of Portax (rectangle-over-a-slide applied to the
@@ -1357,7 +1421,10 @@ suffice; the ct strategy usually solves on the warm seed. Same lean profile as P
 and Condi (`SHAPE_ANNEAL`, **`6x60000` per swept starter (26 configs)**, `inittemp 0.08`, `backtrack 0.30` —
 kept deliberately MODEST because the plaintext-feedback cascade makes the true σ an isolated needle with no
 basin, so no local-search budget cracks it blind; the entry is a bounded honest attempt, not a tuning
-target).
+target), and Fractionated Morse (`SHAPE_ANNEAL`, **`16x120000`**, **`inittemp 0.30`**, `backtrack 0.30` — the
+single KEYED-alphabet anneal (keyword + tail, `fracmorse_move_seq`, not a free permutation); like Digrafid the
+coarse keyword moves want a WARM temperature and RESTARTS are the lever, but there is NO period so the budget
+is a single config, not multiplied by a sweep. Tuned against `test_fracmorse_solver`).
 This is the mechanism for moving the magic
 per-type budgets out of the run scripts and into the binary; add tuned entries for other
 types incrementally. The registry is validated end-to-end in `tests/test_playfair_solver.c`.

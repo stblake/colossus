@@ -67,3 +67,12 @@ __pycache__/
 # Licensed ACA cipher corpus — kept in a separate PRIVATE repo (not redistributable).
 # Present on disk for local benchmarks; managed by its own git repo at ciphers/ACA/.git
 ciphers/ACA/
+tests/test_intkey
+tests/test_intkey_solver
+tools/intkey_gen
+tests/test_condi
+tests/test_condi_solver
+tools/condi_gen
+tests/test_fracmorse
+tests/test_fracmorse_solver
+tools/fracmorse_gen
