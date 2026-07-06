@@ -103,6 +103,13 @@ src/transposition/    # pure-transposition solvers + shared helpers
                                #   INSERTING blank/gap cells (dropped-char repair) and DELETING observed cells
                                #   (added-char repair); a restart+anneal edit search whose fitness is the
                                #   exhaustive period-column search (depth-1 inner, depth-<=2 final); -readdir too
+  double_transposition_solver.c/.h # transcol2-dc: DOUBLE columnar, DIVIDE-AND-CONQUER (Lasry/Kopal/Wacker
+                               #   2014). Scores the SECOND key K2 INDEPENDENTLY of K1 via the Index of
+                               #   Digraphic Potential (IDP: undo K2, then greedily reconstruct the residual
+                               #   single columnar's column adjacency by digraph fit) -- so the O(K1!*K2!)
+                               #   joint search of transcol2 collapses to an O(K2!) IDP climb + an O(K1!)
+                               #   single-columnar finish (rotation-resolved from the IDP's own greedy chain).
+                               #   Cracks key lengths (20-25) at which transcol2's parallel hill-climb fails.
   # trans_common.c also carries the shared exact-ordering helpers: held_karp_best_path()
   #   (max-weight Hamiltonian path) and seam_best_row_order() (exact best within-column
   #   track order L via a per-row + seam-delta decomposition), plus trans_word_set().
@@ -218,6 +225,7 @@ tools/intkey_gen.c           # standalone Interrupted Key generator (make intkey
 tools/condi_gen.c            # standalone Condi generator (make condi_gen)
 tools/fracmorse_gen.c        # standalone Fractionated Morse generator (make fracmorse_gen)
 tools/period_column_gen.c    # standalone Period column order generator (make period_column_gen; space-aware)
+tools/double_transposition_gen.c # standalone double columnar transposition generator (make double_transposition_gen)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
 ciphers/kryptos/     # K1–K4 ciphertexts + run scripts
@@ -396,7 +404,12 @@ AZdecrypt worked example as a two-stage composition KAT — the 168-char spaced 
 included; exact `utp==0`→`utp==1` round-trip over random COMPLETE grids × periods (incl. period 1, `dx==len`,
 and negative space sentinels); and multiset-preservation over random INCOMPLETE grids — with a printed note
 that per-stage `utp` inversion holds for only ~16% of incomplete cases, the reason the solver restricts to
-complete grids).
+complete grids), and
+`tests/test_double_transposition.c` (the double-transposition divide-and-conquer core: the bigram table, a
+double encrypt→decrypt round-trip, and the IDP's paper properties — SELECTIVITY (the true `K2` out-scores 400
+random keys and peaks at the true `L1` under the per-edge normalization), MONOTONICITY (the IDP degrades as
+`K2` is progressively perturbed, Fig 2), and the rotation-resolved greedy `K1` reconstruction from the true
+`K2`).
 `make testopt` additionally runs the in-process solver regressions
 `tests/test_solver.c` (polyalphabetic), `tests/test_playfair_solver.c` (Playfair:
 validates the per-type schedule registry, asserts an 800-char capability floor, and
@@ -530,7 +543,11 @@ a CLEAN cipher recovers exactly, so the solver is a strict superset of the deter
 character** repair — delete one cipher cell, the solver INSERTS a gap restoring the length and recovers all
 but the lost letter; a two-dropped-character floor; and an **added-character** repair — splice a spurious
 letter, the solver DELETES exactly that cell and recovers the plaintext 100%. All over a 168-cell spaced
-plaintext at a fixed seed, so recovery is deterministic; trimmed restart/climb budgets keep it ~25s).
+plaintext at a fixed seed, so recovery is deterministic; trimmed restart/climb budgets keep it ~25s), and
+`tests/test_double_transposition_solver.c` (Double columnar divide & conquer: end-to-end recovery via
+`dct_solve_core` of several key-length pairs (6×6, 9×9, 10×10) at incomplete-rectangle lengths, plus a
+length cliff — all asserted at 100% at fixed seeds with lean budgets, exercising the regime well past
+`transcol2`'s ~12-15 key-length ceiling; ~45s).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
@@ -616,7 +633,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `condi`/`cond`/`69`,
 `fractionated-morse`/`fracmorse`/`fmorse`/`fm`/`70`,
 `period-column`/`periodcol`/`pcol`/`transpercol`/`71`,
-`period-column-space`/`pcol-space`/`pcolspace`/`pcolsp`/`transpercolspace`/`72`
+`period-column-space`/`pcol-space`/`pcolspace`/`pcolsp`/`transpercolspace`/`72`,
+`transcol2-dc`/`transcol2dc`/`dctrans`/`doublecol-dc`/`dcol`/`73`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1297,6 +1315,75 @@ superset check, dropped-1/dropped-2 insertion repair, and added-1 deletion repai
 spaced plaintext at a fixed seed). No generator of its own (corrupt a `period_column_gen` cipher). No
 `run_tests.sh` case (recovery of a corrupted cipher lands just under the char-for-char ~99% threshold — the
 deterministic solver test is the guard).
+
+The **Double columnar transposition, divide & conquer** type
+(`transcol2-dc`/`transcol2dc`/`dctrans`/`doublecol-dc`/`dcol`/`73`; `solve_double_transposition()` +
+`dct_solve_core()` in `double_transposition_solver.c`) is a dedicated solver for the **double columnar
+transposition** cipher — `C = colenc(colenc(P, K1), K2)` — that attacks the two keys **SEPARATELY**,
+following Lasry, Kopal & Wacker, *"Solving the Double Transposition Challenge with a Divide and Conquer
+Approach"* (Cryptologia, 2014). Where `transcol2` (type 18) hill-climbs `K1` and `K2` **in parallel** over
+the combined `K1!·K2!` keyspace — the paper's "Step 1", which they measured to work only for key lengths
+**≤ ~15** and which fails on the famous 599-letter, key-length-21/23 challenge — this solver uses the
+**Index of Digraphic Potential (IDP)** to score the SECOND key `K2` **without knowing `K1`**: undo the
+second transposition with a putative `K2`, and the residue is a *single* columnar transposition of the
+plaintext under `K1`, whose "reconstructability" is scored by greedily chaining the residue's `K1` columns
+into a left-to-right order by **digraph fit** (a max-weight Hamiltonian path over a column-adjacency matrix
+`B[i][j]`, whose entries are the best per-row bigram log-frequency of placing column `j` right of column
+`i`, maximised over the incomplete-rectangle **start-position windows**). Higher IDP ⇒ `K2` closer to
+correct. So the `O(K1!·K2!)` joint search collapses to an `O(K2!)` **IDP hill-climb for `K2`** followed by
+an `O(K1!)` **single-columnar finish for `K1`**. The primitive is `decrypt_columnar` (`transpositions.c`),
+so the solver adds no new cipher math; the IDP needs a **26×26 bigram log-frequency table**, built by
+`dct_load_bigrams` by marginalising the `-ngramfile` (no separate bigram file). **Key design points:**
+(1) the IDP is returned **per-edge normalized** (÷ `L1−1`) so it is comparable across `L1` hypotheses — a
+raw sum trivially favours fewer columns and mis-ranks the length sweep; (2) a columnar transposition is
+recoverable only **up to a cyclic rotation** (the Hamiltonian path has free endpoints and the last column's
+spurious "best right neighbour" closes a near-cycle), so the finish **tries all `L1` rotations of the IDP's
+own greedy chain** (and its reversal) as columnar orders — the correct rotation cuts the near-cycle at the
+true first/last-column boundary and recovers `K1` almost exactly when `K2` is correct, giving the finish a
+near-deterministic warm start that only needs a light n-gram polish; (3) the anneal temperature is matched
+to the per-edge IDP scale (~-2.3, single-swap deltas ~0.02-0.2) — a schedule tuned to the un-normalized sum
+is ~`L1`× too hot and random-walks the budget. The pipeline is **SCREEN** (a short IDP climb of every
+`(L1, L2, dir)` config in `-mincols..-maxcols²`, ranked by best IDP) → **REFINE** (a deep IDP climb of the
+top `keep`=8) → **FINISH** (rotation-resolved single-columnar break of each, kept by the real n-gram score,
+which — not the screening IDP — makes the final call across the kept set). It is a **dedicated solver, NOT a
+`CipherModel`** (the two-phase K2/K1 structure has no single annealed state), dispatched by its own early
+branch in `solve_cipher`; `-nrestarts`/`-nhillclimbs` scale the refine budget (screening depth is a fraction
+of it) and `-readdir tb|bt|both` sets the read direction (both stages share it). The K2 hill-climb uses the
+paper's **Step-4 refinements**: segment-wise moves (segment slide / segment swap / 3-partite rotation, more
+effective than single swaps on transposition keys) plus a **left-to-right best-improvement heuristic**
+applied to each restart's seed and as a final polish. **Cribs ARE supported** (`-crib`, over **plaintext**
+positions) and — crucially — **guide the K2 climb itself**: since undoing K2 leaves a single columnar the
+IDP's greedy chain reconstructs up to a rotation, a crib-aware K2 fitness cheaply rotation-resolves K1 from
+the chain and folds the best crib match into the objective (`dct_k2_fitness`, `crib_w 1.0`). Far from the
+solution every K2's crib fraction sits at the floor (the IDP drives), but as K2 nears the truth the crib
+fraction climbs steeply and sharpens onto the exact key — so a known-plaintext fragment lets the solver
+crack a cipher at a budget too small for pure IDP (verified: the true K2 rotation-resolves to crib fraction
+1.0 vs ~0.22 for random keys). The crib also blends into the **finish + rotation scoring** (`state_score`,
+default `weight_ngram 12` / `weight_crib 36`) to lock K1 and select across configs. It rides the reward-only
+quadgram table but **`-logprob`**
+sharpens the finish. **Spaces/punctuation are carried as REAL grid cells** (like the period-column solvers,
+`TRANSCOL2_DC` is in the **space-significant** set so a trailing space is a real position): when the
+transposition grid includes the spaces/punctuation (they ride both columnar stages), the observed cipher
+keeps them as reversible negative sentinels, `decrypt_columnar` permutes them opaquely, and they are printed
+back in place by `index_to_char`. Both scorers are **letters-only**: the IDP skips any column-pair row touching
+a non-letter (mean bigram log-freq over the LETTER pairs only — `nv==q` for an all-letter cipher, so it is
+bit-identical to the old sum/q) and `ngram_score` already projects onto letters. So a double transposition whose
+plaintext contains spaces (e.g. the W168 hypothesis) is attacked with the spaces intact (no `-skipspaces`);
+recovery is exact including the punctuation. Under **`-verbose`** it streams a live dialog in the polyalphabetic solver's
+`value⇥[label]` convention: per-config screening lines, refine phase markers, live best-IDP improvements
+during the `K2` climb, and a metrics block + the full decrypted plaintext on each new global best. It cracks
+key lengths **(20-25)** at which `transcol2`'s parallel hill-climb fails; the IDP is **selective on the real
+599-letter challenge** (the true `K2` is the global IDP optimum, `L1=21` identifiable), so given enough
+search budget it recovers the challenge plaintext. Generate test ciphers with `tools/double_transposition_gen.c`
+(`make double_transposition_gen`; args are a plaintext and two keywords). Unit tests:
+`tests/test_double_transposition.c` (the IDP's paper properties — SELECTIVITY: true `K2` > random and peaks
+at the true `L1`; MONOTONICITY: IDP degrades as `K2` is perturbed, Fig 2; plus the round-trip and the
+rotation-resolved greedy `K1` reconstruction) and `tests/test_double_transposition_solver.c` (end-to-end
+recovery of several key-length pairs 6-10, a length cliff, a crib-guided-K2 case, and a **space-significant
+case** — a double transposition over text with spaces/punctuation recovered 100% incl. the punctuation, all at
+fixed seeds — the regime well past
+`transcol2`'s ~12-15 ceiling). No `run_tests.sh` case (the solver is stochastic and each solve is tens of
+seconds; the two unit tests are the guard).
 
 The **Slidefair** family (`slidefair`/`sf`/`59`, `slidefair-var`/`sfv`/`60`, `slidefair-beau`/`sfb`/`61`;
 `solve_slidefair()`, `SLIDEFAIR_MODEL`, `SHAPE_ANNEAL`) is the ACA **periodic DIGRAPHIC

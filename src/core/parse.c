@@ -248,6 +248,11 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "pcol-space") || str_eq(arg, "pcolspace") ||
         str_eq(arg, "pcolsp") || str_eq(arg, "transpercolspace")) return PERIOD_COLUMN_SPACE;
 
+    // Double columnar transposition, divide-and-conquer (IDP) solver.
+    if (str_eq(arg, "transcol2-dc") || str_eq(arg, "transcol2dc") ||
+        str_eq(arg, "dctrans") || str_eq(arg, "doublecol-dc") ||
+        str_eq(arg, "dcol")) return TRANSCOL2_DC;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }

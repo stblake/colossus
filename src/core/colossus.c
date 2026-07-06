@@ -241,6 +241,7 @@
 #include "intkey_solver.h"
 #include "condi_solver.h"
 #include "fracmorse_solver.h"
+#include "double_transposition_solver.h"
 
 void init_config(ColossusConfig *cfg) {
     // Set Defaults
@@ -805,6 +806,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a period column order transposition (periodic column permutation, composable to 2 stages).\n\n");
     } else if (cfg.cipher_type == PERIOD_COLUMN_SPACE) {
         printf("\nAttacking a period column order transposition, space-robust (inserts searched blank/gap cells for dropped-character repair).\n\n");
+    } else if (cfg.cipher_type == TRANSCOL2_DC) {
+        printf("\nAttacking a double columnar transposition (divide & conquer: Index of Digraphic Potential scores K2 independently of K1).\n\n");
     } else if (cfg.cipher_type == RAILFENCE) {
         printf("\nAttacking a rail fence transposition cipher (rail-count + phase enumeration).\n\n");
     } else if (cfg.cipher_type == ROUTE) {
@@ -1121,7 +1124,8 @@ int main(int argc, char **argv) {
         bool space_significant = (t >= TRANSMATRIX && t <= GRILLE) ||
                                  (t >= TRANSCOL_L && t <= TRANSTILE) ||
                                  (t == PERIOD_COLUMN) ||
-                                 (t == PERIOD_COLUMN_SPACE);
+                                 (t == PERIOD_COLUMN_SPACE) ||
+                                 (t == TRANSCOL2_DC);
         if (!space_significant)
             while (ci > 0 && isspace((unsigned char) single_ciphertext_buffer[ci - 1]))
                 single_ciphertext_buffer[--ci] = '\0';
@@ -1238,6 +1242,11 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     }
     if (cfg->cipher_type == PERIOD_COLUMN_SPACE) {
         solve_period_column_space(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
+        return ;
+    }
+    if (cfg->cipher_type == TRANSCOL2_DC) {
+        solve_double_transposition(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
         return ;
     }
