@@ -207,6 +207,22 @@ src/polygraphic/      # square/cube/matrix ciphers — each: primitive + a Ciphe
                                      #   reward-only quadgram table (NO -logprob -- the validity weight is tuned to that
                                      #   scale; -logprob degrades short-text recovery). Recovers from ~24 letters, far
                                      #   below the ACA 80-100 range. No cribs; digit input parsed from ciphertext_str.
+  morbit.c   morbit_solver.c/.h      # Morbit: plaintext -> Morse with single 'x' letter separators
+                                     #   (xx between words) -> the {DOT,DASH,X} stream taken in PAIRS (padding one
+                                     #   trailing X if odd) -> each of the 9 base-3-ordered pairs (pair=3*top+bottom)
+                                     #   mapped to a digit 1..9. A 9-letter keyword assigns the digits by alphabetical
+                                     #   rank, so the KEY is a bijection pair<->digit and the whole keyspace is 9! =
+                                     #   362880. The digraphic sibling of Pollux: DETERMINISTIC encode (a bijection, not
+                                     #   polyphonic), length CHANGE (C digits <-> 2C symbols), NO period, and -- like
+                                     #   Pollux/period_column -- a needle (one digit's pair re-assignment re-parses the
+                                     #   whole stream), so the solver is DETERMINISTIC and EXHAUSTIVE, NOT a CipherModel:
+                                     #   morbit_search enumerates all 9! bijections (Heap's algorithm), decodes+scores
+                                     #   every one, keeps the global best. Same fitness as Pollux (mean n-gram + a
+                                     #   Morse-VALIDITY reward MORBIT_VALID_WEIGHT), same self-contained Morse table
+                                     #   (pollux.c/fracmorse.c left byte-identical), same reward-only quadgram table (NO
+                                     #   -logprob -- it degrades short text; validity reward is ESSENTIAL at the short
+                                     #   end, L=16 collapses to 0 without it). Recovers from ~24 letters. No cribs; digit
+                                     #   input (1..9) parsed from ciphertext_str. Dispatched by its own early branch.
 
 src/substitution/     # monoalphabetic / homophonic substitution solvers
   indep_solver.c/.h homophonic_solver.c/.h   # each: a CipherModel + solve_<type>()
@@ -240,6 +256,7 @@ tools/condi_gen.c            # standalone Condi generator (make condi_gen)
 tools/fracmorse_gen.c        # standalone Fractionated Morse generator (make fracmorse_gen)
 tools/period_column_gen.c    # standalone Period column order generator (make period_column_gen; space-aware)
 tools/pollux_gen.c           # standalone Pollux generator (make pollux_gen; assignment string + RNG seed)
+tools/morbit_gen.c           # standalone Morbit generator (make morbit_gen; 9-letter keyword)
 tools/double_transposition_gen.c # standalone double columnar transposition generator (make double_transposition_gen)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
@@ -430,7 +447,14 @@ ciphertext decodes to `LUCKHELPS` under the ACA key — a MORSE-STREAM KAT that 
 the word space and maps the polyphonic digits back through the key to reproduce the exact 39-symbol Morse
 stream (exercising the `xx` word divider), encode→decode round-trips == identity over random keys ×
 plaintexts × lengths, and the edge paths — an illegal `xxx` run flagged invalid, a codeword > 4 symbols →
-filler, a key missing an element rejected by encode, and single-letter recovery).
+filler, a key missing an element rejected by encode, and single-letter recovery), and
+`tests/test_morbit.c` (the Morbit primitives: the ACA worked-example DECODE KAT — the published 23-digit
+ciphertext `27435 88151…` decodes to `ONCEUPONATIME` under the keyword-`WISECRACK` key — an ENCODE KAT
+that enciphers `ONCE UPON A TIME` with the word spaces and reproduces the exact 23-digit ciphertext
+(exercising the `xx` word divider AND the odd-length trailing-`x` pad), encode→decode round-trips ==
+identity over random pair↔digit bijections × plaintexts × lengths, an explicit odd-length-pad
+single-letter case, and the edge paths — an illegal `xxx` run flagged invalid, a codeword > 4 symbols →
+filler, and a non-bijection key rejected by encode).
 `make testopt` additionally runs the in-process solver regressions
 `tests/test_solver.c` (polyalphabetic), `tests/test_playfair_solver.c` (Playfair:
 validates the per-type schedule registry, asserts an 800-char capability floor, and
@@ -575,13 +599,20 @@ sits ~24 letters — 0% at 12, ~31% at 16, ~97% at 20, 100% from 24 — far belo
 validity-weight sweep in the marginal regime showing the reward is essential there (weight 0 → 0% vs
 weight 6 → ~98% at 16 letters); a reward-only-vs-`-logprob` characterization (reward-only wins;
 `-logprob` degrades short-text recovery); and determinism. Since the solver is deterministic-exhaustive
-there is no schedule to tune — the sweeps CALIBRATE the single knob, `POLLUX_VALID_WEIGHT`; ~5s).
+there is no schedule to tune — the sweeps CALIBRATE the single knob, `POLLUX_VALID_WEIGHT`; ~5s), and
+`tests/test_morbit_solver.c` (Morbit: exact recovery across keywords at a solid length (asserted 100%);
+a recovery-vs-length cliff printed with an asserted floor (the cliff sits ~24 letters — ~44% at 16, ~90%
+at 20, 100% from 24 — below the ACA 50-75 band); a validity-weight sweep in the marginal regime showing
+the reward is essential there (weight 0 → 0% vs weight 3 → ~44% at 16 letters); a reward-only-vs-`-logprob`
+characterization (reward-only wins; `-logprob` collapses short text 90% → 0% at L=20); and determinism.
+Deterministic-exhaustive (9! Heap's enumeration), so the sweeps CALIBRATE the single knob,
+`MORBIT_VALID_WEIGHT`; ~24s).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
 
 `ciphers/tests/run_tests.sh` is the **accuracy regression suite**: a manifest of
-74 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
+75 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
 `q*_p1xx` puzzles, pure-transposition types, a homophonic substitution, a Playfair
 cipher, a Bifid cipher, a Trifid cipher, a Hill cipher, the three Phillips
 variants — Row / Column / Row-Column — a Two-Square (horizontal + vertical), a
@@ -602,8 +633,10 @@ pinned), the three Progressive Key bases (`progkey_decl` / `progkey_var_decl` /
 `intkey_ptint_decl` — pt-interruptor, interruptor pinned; `intkey_breaks_decl` — supplied `-breaks`;
 all period pinned), a Fractionated Morse cipher (`fracmorse_pride`, keyed-alphabet anneal,
 `-logprob`), a Period column order cipher (`period_column_pp`, a two-stage 168-letter
-composition solved deterministically, `-depth 2`), and a Pollux cipher (`pollux_pp`, a ~90-letter digit
-cipher solved by the deterministic exhaustive 3^10 search, no budget args)) that each
+composition solved deterministically, `-depth 2`), a Pollux cipher (`pollux_pp`, a ~90-letter digit
+cipher solved by the deterministic exhaustive 3^10 search, no budget args), and a Morbit cipher
+(`morbit_pp`, a ~90-letter digit cipher solved by the deterministic exhaustive 9! search, no budget
+args)) that each
 solve to ~100% with a **fixed `-seed`** and quadgrams. It runs the solver, pulls the
 recovered plaintext from the last field of the `>>>` CSV line, compares it
 character-for-character to a sibling `<name>.solution` (bare A–Z plaintext), and prints
@@ -613,9 +646,10 @@ bit-identical refactor keeps every score at 100% and any behavioural regression 
 immediately. Each test's `-nrestarts`/`-nhillclimbs` are trimmed to the smallest that
 still lands on the solution at the seed, so the full run is ~2 min (was ~45 before
 trimming). The manifest tags each case `fast` or `slow`:
-`./run_tests.sh --fast` runs the 38-case fast tier in ~62s (use while iterating; incl. the three
+`./run_tests.sh --fast` runs the 39-case fast tier in ~63s (use while iterating; incl. the three
 ~0s Progressive Key bases, the three ~0s Slidefair bases, the five ~1s Interrupted Key cases, the
-~2s deterministic Period column order case, and the ~0s deterministic Pollux case),
+~2s deterministic Period column order case, and the ~0s deterministic Pollux + ~1s deterministic Morbit
+cases),
 `--slow` the 32 heavier ciphers (incl. the ~24s Playfair, ~6s Bifid, ~18s Trifid, the
 three ~13s Phillips solves, the two ~10s Two-Square solves, the ~17s Four-Square, the ~20s Tri-Square, the
 ~10s ADFGX, the four ~6–8s Nihilist Substitution solves, the three ~1s Nicodemus
@@ -664,7 +698,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `period-column`/`periodcol`/`pcol`/`transpercol`/`71`,
 `period-column-space`/`pcol-space`/`pcolspace`/`pcolsp`/`transpercolspace`/`72`,
 `transcol2-dc`/`transcol2dc`/`dctrans`/`doublecol-dc`/`dcol`/`73`,
-`pollux`/`pol`/`74`
+`pollux`/`pol`/`74`,
+`morbit`/`mor`/`75`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1315,6 +1350,43 @@ KAT via the `xx` word divider, round-trips, and the illegal-`xxx` / long-codewor
 edges) and `tests/test_pollux_solver.c` (exact recovery, the length cliff, and the validity-weight +
 `-logprob` calibration sweeps); `ciphers/tests/run_tests.sh` carries `pollux_pp` (a ~90-letter cipher,
 ~100%).
+
+The **Morbit** type (`morbit`/`mor`/`75`; `solve_morbit()` + `morbit_search()` in `morbit_solver.c`)
+is the ACA **"Morbit"** — the **digraphic sibling of Pollux**. The plaintext is written in Morse with a
+single `x` between letters and `xx` between words (Pollux/Fractionated-Morse convention), but the
+`{DOT, DASH, X}` stream is taken in **PAIRS** (units of 2, padding **one trailing `x` if the length is
+odd** — verified against the ACA worked example, where "once upon a time" is 45 symbols padded to 46).
+Each of the **9 possible pairs**, ordered **base-3** (`DOT=0, DASH=1, X=2`; `pair = 3*top + bottom`), is
+enciphered as a **digit 1..9**: a 9-letter keyword assigns the digits to the pairs by the keyword letters'
+**alphabetical rank**, so the KEY is a **bijection pair↔digit** and the ciphertext is a run of digits
+**1..9** (no 0). The primitive (`morbit.c`, hand-verified cell-for-cell against the ACA example — keyword
+`WISECRACK` → pair→digit `958427136`, `Once upon a time.` → CT `27435 88151 28274 65679 378` →
+`ONCEUPONATIME`) reuses **a small self-contained Morse table** (copied from `pollux.c` so it stays
+byte-identical). Unlike Pollux, encryption is **DETERMINISTIC** (a bijection — no polyphonic random digit
+choice); decryption is deterministic for both. **The decisive design point:** the entire keyspace is
+**9! = 362,880** pair↔digit bijections — so, exactly like **Pollux** and **Period column order**, Morbit
+is a **DETERMINISTIC EXHAUSTIVE** solver, **NOT a hill-climbing `CipherModel`** (no engine schedule /
+`SearchDefaults` / `-method`): `morbit_search` enumerates every bijection (**Heap's algorithm**), decodes
++ scores each, and keeps the global best, guaranteed optimal in well under a second (~0.5 s). This is the
+right shape because the landscape is a **needle** (re-assigning one digit's pair re-parses the whole Morse
+stream → no local gradient). Fitness is the shared **mean** n-gram score (length-fair, so variable-length
+decodes compare directly — **no tiling**) plus a **Morse-VALIDITY reward** (`MORBIT_VALID_WEIGHT *
+n_valid/n_tokens`; illegal `xxx` runs and >4-symbol codewords count against it), the Pollux/fracmorse
+analogue. It **rides the reward-only quadgram table (NO `-logprob`)** like Pollux — and the validity
+reward is **essential at the short end** (measured: at 16 letters, validity weight 0 → 0% recovery,
+weight 3 → 44%; and `-logprob` **degrades** short text, L=20 dropping 90% → 0%). It recovers reliably
+**from ~24 letters**, far below the ACA 50-75 range (see `tests/test_morbit_solver.c`, which prints the
+length cliff and the validity-weight / `-logprob` calibration sweeps). **Cribs are not used** (the length
+change breaks the positional map, like Pollux/fracmorse). Digit input (1..9) is parsed from
+`ciphertext_str` directly (not the A–Z decode); the report emits a Pollux-style `>>>` CSV with the
+recovered `key=` (the 9-char pair→digit string, e.g. `958427136`) and `valid=`. Dispatched by its own
+early branch in `solve_cipher`. Generate test ciphers with `tools/morbit_gen.c` (`make morbit_gen`; args
+are a plaintext and a 9-letter keyword, deriving the digit assignment by alphabetical rank). Unit tests:
+`tests/test_morbit.c` (primitive — the ACA decode + encode KATs incl. the `xx` word divider and the
+odd-length trailing-`x` pad, round-trips over random bijections, and the illegal-`xxx` / long-codeword /
+non-bijection edges) and `tests/test_morbit_solver.c` (exact recovery, the length cliff, and the
+validity-weight + `-logprob` calibration sweeps); `ciphers/tests/run_tests.sh` carries `morbit_pp` (a
+~90-letter cipher, ~100%).
 
 The **Period column order** type (`period-column`/`periodcol`/`pcol`/`transpercol`/`71`;
 `solve_period_column()` + `period_column_search()` in `period_column_solver.c`) is AZdecrypt's

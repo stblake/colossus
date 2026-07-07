@@ -91,6 +91,7 @@
 #define PERIOD_COLUMN_SPACE 72 // Period column order, space-robust: inserts searched blank/gap cells (dropped-char repair)
 #define TRANSCOL2_DC       73  // Double columnar, DIVIDE-AND-CONQUER (IDP): score K2 independently of K1
 #define POLLUX             74  // Pollux: Morse over a digit->{dot,dash,x} map; deterministic exhaustive (3^10)
+#define MORBIT             75  // Morbit: Morse taken in PAIRS over a pair<->digit map; deterministic exhaustive (9!)
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 

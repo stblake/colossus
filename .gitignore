@@ -87,3 +87,6 @@ tools/double_transposition_gen
 tests/test_pollux
 tests/test_pollux_solver
 tools/pollux_gen
+tests/test_morbit
+tests/test_morbit_solver
+tools/morbit_gen

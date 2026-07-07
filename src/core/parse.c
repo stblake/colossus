@@ -256,6 +256,9 @@ int parse_cipher_type(const char *arg) {
     // Pollux (Morse over a digit -> {dot,dash,x} map; deterministic exhaustive 3^10).
     if (str_eq(arg, "pollux") || str_eq(arg, "pol")) return POLLUX;
 
+    // Morbit (Morse taken in pairs over a pair <-> digit map; deterministic exhaustive 9!).
+    if (str_eq(arg, "morbit") || str_eq(arg, "mor")) return MORBIT;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }

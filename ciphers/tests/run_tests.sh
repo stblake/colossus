@@ -213,6 +213,10 @@ fast | period_column_pp    | period-column | period_column_pp.txt    | -depth 2
 # -nrestarts/-nhillclimbs); this ~90-letter digit cipher decodes to the P&P opening. See
 # tests/test_pollux*.c. Rides the reward-only quadgram table (no -logprob).
 fast | pollux_pp           | pollux        | pollux_pp.txt           |
+# Morbit (Morse taken in pairs over a pair<->digit map). Deterministic exhaustive 9! solver
+# (no -nrestarts/-nhillclimbs); this ~90-letter digit cipher decodes to the P&P opening. See
+# tests/test_morbit*.c. Rides the reward-only quadgram table (no -logprob).
+fast | morbit_pp           | morbit        | morbit_pp.txt           |
 EOF
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
