@@ -193,6 +193,20 @@ src/polygraphic/      # square/cube/matrix ciphers — each: primitive + a Ciphe
                                      #   token) and CYCLICALLY TILES it to the ciphertext length C; a MORSE-VALIDITY reward
                                      #   (fraction of tokens that are legal codewords) is folded into score_adjust (à la
                                      #   ADFGVX's IoC term). Needs -logprob; no cribs.
+  pollux.c pollux_solver.c/.h        # Pollux: plaintext -> Morse with single 'x' letter separators
+                                     #   (xx between words) -> the {DOT,DASH,X} stream mapped to a DIGIT stream by a
+                                     #   KEY assigning each digit 0..9 to one of the three symbols (polyphonic encode:
+                                     #   a random assigned digit per symbol; deterministic decode). A length CHANGE (C
+                                     #   digits -> N letters). NO period. The ENTIRE keyspace is 3^10 = 59049 maps, so
+                                     #   -- like period_column -- the solver is DETERMINISTIC and EXHAUSTIVE (a needle:
+                                     #   one digit re-assignment re-parses the whole stream, no gradient), NOT a
+                                     #   CipherModel/anneal: pollux_search decodes+scores every key and keeps the global
+                                     #   best. Fitness = mean n-gram (length-fair) + a Morse-VALIDITY reward (à la
+                                     #   fracmorse; illegal xxx runs / >4-symbol codewords count against it). Reuses a
+                                     #   small self-contained Morse table (fracmorse.c left byte-identical). Rides the
+                                     #   reward-only quadgram table (NO -logprob -- the validity weight is tuned to that
+                                     #   scale; -logprob degrades short-text recovery). Recovers from ~24 letters, far
+                                     #   below the ACA 80-100 range. No cribs; digit input parsed from ciphertext_str.
 
 src/substitution/     # monoalphabetic / homophonic substitution solvers
   indep_solver.c/.h homophonic_solver.c/.h   # each: a CipherModel + solve_<type>()
@@ -225,6 +239,7 @@ tools/intkey_gen.c           # standalone Interrupted Key generator (make intkey
 tools/condi_gen.c            # standalone Condi generator (make condi_gen)
 tools/fracmorse_gen.c        # standalone Fractionated Morse generator (make fracmorse_gen)
 tools/period_column_gen.c    # standalone Period column order generator (make period_column_gen; space-aware)
+tools/pollux_gen.c           # standalone Pollux generator (make pollux_gen; assignment string + RNG seed)
 tools/double_transposition_gen.c # standalone double columnar transposition generator (make double_transposition_gen)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
@@ -409,7 +424,13 @@ complete grids), and
 double encrypt→decrypt round-trip, and the IDP's paper properties — SELECTIVITY (the true `K2` out-scores 400
 random keys and peaks at the true `L1` under the per-edge normalization), MONOTONICITY (the IDP degrades as
 `K2` is progressively perturbed, Fig 2), and the rotation-resolved greedy `K1` reconstruction from the true
-`K2`).
+`K2`), and
+`tests/test_pollux.c` (the Pollux primitives: the ACA worked-example DECODE KAT — the published 39-digit
+ciphertext decodes to `LUCKHELPS` under the ACA key — a MORSE-STREAM KAT that encodes `LUCK HELPS` with
+the word space and maps the polyphonic digits back through the key to reproduce the exact 39-symbol Morse
+stream (exercising the `xx` word divider), encode→decode round-trips == identity over random keys ×
+plaintexts × lengths, and the edge paths — an illegal `xxx` run flagged invalid, a codeword > 4 symbols →
+filler, a key missing an element rejected by encode, and single-letter recovery).
 `make testopt` additionally runs the in-process solver regressions
 `tests/test_solver.c` (polyalphabetic), `tests/test_playfair_solver.c` (Playfair:
 validates the per-type schedule registry, asserts an 800-char capability floor, and
@@ -547,13 +568,20 @@ plaintext at a fixed seed, so recovery is deterministic; trimmed restart/climb b
 `tests/test_double_transposition_solver.c` (Double columnar divide & conquer: end-to-end recovery via
 `dct_solve_core` of several key-length pairs (6×6, 9×9, 10×10) at incomplete-rectangle lengths, plus a
 length cliff — all asserted at 100% at fixed seeds with lean budgets, exercising the regime well past
-`transcol2`'s ~12-15 key-length ceiling; ~45s).
+`transcol2`'s ~12-15 key-length ceiling; ~45s), and
+`tests/test_pollux_solver.c` (Pollux: exact recovery across assignments × RNG seeds at a solid length
+(asserted 100%); a recovery-vs-length cliff printed down to the limit with an asserted floor (the cliff
+sits ~24 letters — 0% at 12, ~31% at 16, ~97% at 20, 100% from 24 — far below the ACA 80-100 band); a
+validity-weight sweep in the marginal regime showing the reward is essential there (weight 0 → 0% vs
+weight 6 → ~98% at 16 letters); a reward-only-vs-`-logprob` characterization (reward-only wins;
+`-logprob` degrades short-text recovery); and determinism. Since the solver is deterministic-exhaustive
+there is no schedule to tune — the sweeps CALIBRATE the single knob, `POLLUX_VALID_WEIGHT`; ~5s).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
 
 `ciphers/tests/run_tests.sh` is the **accuracy regression suite**: a manifest of
-73 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
+74 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
 `q*_p1xx` puzzles, pure-transposition types, a homophonic substitution, a Playfair
 cipher, a Bifid cipher, a Trifid cipher, a Hill cipher, the three Phillips
 variants — Row / Column / Row-Column — a Two-Square (horizontal + vertical), a
@@ -573,8 +601,9 @@ pinned), the three Progressive Key bases (`progkey_decl` / `progkey_var_decl` /
 (`intkey_decl` / `intkey_var_decl` / `intkey_beau_decl` — ct-interruptor, blind interruptor;
 `intkey_ptint_decl` — pt-interruptor, interruptor pinned; `intkey_breaks_decl` — supplied `-breaks`;
 all period pinned), a Fractionated Morse cipher (`fracmorse_pride`, keyed-alphabet anneal,
-`-logprob`), and a Period column order cipher (`period_column_pp`, a two-stage 168-letter
-composition solved deterministically, `-depth 2`)) that each
+`-logprob`), a Period column order cipher (`period_column_pp`, a two-stage 168-letter
+composition solved deterministically, `-depth 2`), and a Pollux cipher (`pollux_pp`, a ~90-letter digit
+cipher solved by the deterministic exhaustive 3^10 search, no budget args)) that each
 solve to ~100% with a **fixed `-seed`** and quadgrams. It runs the solver, pulls the
 recovered plaintext from the last field of the `>>>` CSV line, compares it
 character-for-character to a sibling `<name>.solution` (bare A–Z plaintext), and prints
@@ -584,9 +613,9 @@ bit-identical refactor keeps every score at 100% and any behavioural regression 
 immediately. Each test's `-nrestarts`/`-nhillclimbs` are trimmed to the smallest that
 still lands on the solution at the seed, so the full run is ~2 min (was ~45 before
 trimming). The manifest tags each case `fast` or `slow`:
-`./run_tests.sh --fast` runs the 37-case fast tier in ~62s (use while iterating; incl. the three
-~0s Progressive Key bases, the three ~0s Slidefair bases, the five ~1s Interrupted Key cases, and the
-~2s deterministic Period column order case),
+`./run_tests.sh --fast` runs the 38-case fast tier in ~62s (use while iterating; incl. the three
+~0s Progressive Key bases, the three ~0s Slidefair bases, the five ~1s Interrupted Key cases, the
+~2s deterministic Period column order case, and the ~0s deterministic Pollux case),
 `--slow` the 32 heavier ciphers (incl. the ~24s Playfair, ~6s Bifid, ~18s Trifid, the
 three ~13s Phillips solves, the two ~10s Two-Square solves, the ~17s Four-Square, the ~20s Tri-Square, the
 ~10s ADFGX, the four ~6–8s Nihilist Substitution solves, the three ~1s Nicodemus
@@ -634,7 +663,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `fractionated-morse`/`fracmorse`/`fmorse`/`fm`/`70`,
 `period-column`/`periodcol`/`pcol`/`transpercol`/`71`,
 `period-column-space`/`pcol-space`/`pcolspace`/`pcolsp`/`transpercolspace`/`72`,
-`transcol2-dc`/`transcol2dc`/`dctrans`/`doublecol-dc`/`dcol`/`73`
+`transcol2-dc`/`transcol2dc`/`dctrans`/`doublecol-dc`/`dcol`/`73`,
+`pollux`/`pol`/`74`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1246,6 +1276,45 @@ single config, no sweep), tuned against `tests/test_fracmorse_solver.c` (which r
 anneal|shotgun|pso` all run on it (PSO is bounded/weak here — the swarm × particle × refine cost makes a
 large iteration budget pathological, so the test clamps it). Generate test ciphers with
 `tools/fracmorse_gen.c` (`make fracmorse_gen`; args are a plaintext and a keyword).
+
+The **Pollux** type (`pollux`/`pol`/`74`; `solve_pollux()` + `pollux_search()` in `pollux_solver.c`)
+is the ACA **"Pollux"** — the second **Morse** type. The plaintext is written in International Morse
+with a single `x` separator between letters and `xx` between words (a run of `xxx` is impossible), and
+the three stream symbols `{DOT, DASH, X}` are mapped to a **DIGIT stream** by a **KEY that assigns each
+of the ten digits 0..9 to one of the three symbols** (usually 4 dots / 3 dashes / 3 x, but any split
+with ≥1 of each is legal). So the ciphertext is a run of digits 0-9, **one digit per Morse symbol** — a
+length CHANGE (C digits → N letters), **no period**, full 26-letter alphabet. Encryption is
+**POLYPHONIC** (each Morse symbol becomes a *random* digit among those the key assigns to it);
+decryption is fully **deterministic** given the key. The primitive (`pollux.c`, hand-verified against
+the ACA worked example — key `1→x 2→- 3→. 4→. 5→x 6→. 7→- 8→- 9→x 0→.`, `LUCK HELPS` → CT
+`08639 34257 02417 68596 30414 56234 90874 5360`) reuses **a small self-contained Morse table** (the
+`fracmorse.c` reverse-token trick, copied so `fracmorse.c` stays byte-identical, the seriated_playfair
+precedent). **The decisive design point:** the entire keyspace is **3^10 = 59,049** digit→symbol maps,
+so — like the **Period column order** solver — Pollux is a **DETERMINISTIC EXHAUSTIVE** solver, **NOT a
+hill-climbing `CipherModel`** (no engine schedule / `SearchDefaults` / `-method`): `pollux_search`
+decodes + scores **every** key and keeps the global best, guaranteed optimal in well under a second (~30M
+ops). This is the right shape because the landscape is a **needle** (re-assigning one digit re-parses the
+whole Morse stream → no local gradient), exactly where a stochastic climber flails but enumeration is
+certain. Fitness is the shared **mean** n-gram score of the decoded plaintext (length-fair for free, so
+variable-length decodes compare directly — **no tiling**, unlike fracmorse which tiles only because it
+runs inside the fixed-length engine) plus a **Morse-VALIDITY reward** (`POLLUX_VALID_WEIGHT * n_valid/
+n_tokens`; illegal `xxx` runs and >4-symbol codewords count against it), the fracmorse analogue — it
+breaks near-ties and, at the very short end, is essential (measured: at 16 letters, validity weight 0 →
+0% recovery, weight 3 → 31%, weight 6 → 98%). It **rides the reward-only quadgram table (NO `-logprob`)**
+like period_column — and unlike the fracmorse family, `-logprob` **degrades** short-text recovery (the
+validity weight is tuned to the reward-only scale). It recovers reliably **from ~24 letters**, far below
+the ACA 80-100 range (see `tests/test_pollux_solver.c`, which prints the length cliff and the
+validity-weight / `-logprob` calibration sweeps). **Cribs are not used** (the length change breaks the
+positional map, like fracmorse). Digit input is parsed from `ciphertext_str` directly (mirroring
+`solve_nihilist_sub`'s number parser, but one digit per symbol), not the A-Z decode; the report emits a
+fracmorse-style `>>>` CSV with the recovered `key=` (a 10-char `.-x` string) and `valid=`. Dispatched by
+its own early branch in `solve_cipher`. Generate test ciphers with `tools/pollux_gen.c`
+(`make pollux_gen`; args are a plaintext, a 10-char `./-/x` assignment indexed by digit 0..9, and an
+optional RNG seed). Unit tests: `tests/test_pollux.c` (primitive — the ACA decode KAT, the Morse-stream
+KAT via the `xx` word divider, round-trips, and the illegal-`xxx` / long-codeword / missing-element
+edges) and `tests/test_pollux_solver.c` (exact recovery, the length cliff, and the validity-weight +
+`-logprob` calibration sweeps); `ciphers/tests/run_tests.sh` carries `pollux_pp` (a ~90-letter cipher,
+~100%).
 
 The **Period column order** type (`period-column`/`periodcol`/`pcol`/`transpercol`/`71`;
 `solve_period_column()` + `period_column_search()` in `period_column_solver.c`) is AZdecrypt's

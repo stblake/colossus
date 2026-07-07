@@ -76,3 +76,14 @@ tools/condi_gen
 tests/test_fracmorse
 tests/test_fracmorse_solver
 tools/fracmorse_gen
+
+# period column / double transposition / pollux binaries
+tests/test_period_column
+tests/test_period_column_solver
+tests/test_period_column_space_solver
+tests/test_double_transposition
+tests/test_double_transposition_solver
+tools/double_transposition_gen
+tests/test_pollux
+tests/test_pollux_solver
+tools/pollux_gen

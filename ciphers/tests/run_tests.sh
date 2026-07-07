@@ -209,6 +209,10 @@ fast | grille_aca          | grille        | grille_aca.txt          | -nrestart
 # Deterministic exhaustive solver (no -nrestarts/-nhillclimbs); this 168-letter case is a two-stage
 # cipher (56x3 UTP P:2 then 4x42 TP P:3) the solver inverts. See tests/test_period_column*.c.
 fast | period_column_pp    | period-column | period_column_pp.txt    | -depth 2
+# Pollux (Morse over a digit -> dot/dash/x map). Deterministic exhaustive 3^10 solver (no
+# -nrestarts/-nhillclimbs); this ~90-letter digit cipher decodes to the P&P opening. See
+# tests/test_pollux*.c. Rides the reward-only quadgram table (no -logprob).
+fast | pollux_pp           | pollux        | pollux_pp.txt           |
 EOF
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }

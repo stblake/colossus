@@ -253,6 +253,9 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "dctrans") || str_eq(arg, "doublecol-dc") ||
         str_eq(arg, "dcol")) return TRANSCOL2_DC;
 
+    // Pollux (Morse over a digit -> {dot,dash,x} map; deterministic exhaustive 3^10).
+    if (str_eq(arg, "pollux") || str_eq(arg, "pol")) return POLLUX;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
