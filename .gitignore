@@ -90,3 +90,6 @@ tools/pollux_gen
 tests/test_morbit
 tests/test_morbit_solver
 tools/morbit_gen
+tests/test_straddling_checkerboard
+tests/test_straddling_checkerboard_solver
+tools/straddling_checkerboard_gen

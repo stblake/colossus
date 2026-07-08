@@ -888,6 +888,16 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 120, .s_n_hill_climbs = 120000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Straddling Checkerboard: the per-config SA MINI-SOLVE pre-pass (in the solver) does the
+    // heavy lifting and warm-starts each kept indicator-pair config near the solution, so the
+    // engine anneal is a short warm polish (a few restarts). inittemp 0.30 like the other
+    // keyed digit/alphabet types; global-best tracking preserves the warm map through it.
+    { .cipher_type = STRADDLING_CHECKERBOARD, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 4, .a_n_hill_climbs = 20000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 30, .s_n_hill_climbs = 40000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 
 bool apply_cipher_defaults(ColossusConfig *cfg, bool announce) {

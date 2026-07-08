@@ -217,6 +217,11 @@ fast | pollux_pp           | pollux        | pollux_pp.txt           |
 # (no -nrestarts/-nhillclimbs); this ~90-letter digit cipher decodes to the P&P opening. See
 # tests/test_morbit*.c. Rides the reward-only quadgram table (no -logprob).
 fast | morbit_pp           | morbit        | morbit_pp.txt           |
+# Straddling Checkerboard (keyed-board digit fractionation). A ~207-letter cipher (keyword
+# SECRET, blanks 2&6) recovered by the per-config SA mini-solve pre-pass + warm anneal over
+# the free code->cell substitution. Needs -logprob. Letters (incl. keyed labels) recover
+# robustly; numeric/figure-shift is a documented limitation (see tests/test_straddling*.c).
+slow | straddling_pp       | sc            | straddling_pp.txt       | -logprob
 EOF
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }

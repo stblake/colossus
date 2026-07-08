@@ -259,6 +259,11 @@ int parse_cipher_type(const char *arg) {
     // Morbit (Morse taken in pairs over a pair <-> digit map; deterministic exhaustive 9!).
     if (str_eq(arg, "morbit") || str_eq(arg, "mor")) return MORBIT;
 
+    // Straddling Checkerboard (keyed-board digit fractionation; keyed labels + figure-shift).
+    if (str_eq(arg, "straddling-checkerboard") || str_eq(arg, "straddling") ||
+        str_eq(arg, "straddle") || str_eq(arg, "strad") || str_eq(arg, "sc"))
+        return STRADDLING_CHECKERBOARD;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }

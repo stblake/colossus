@@ -223,6 +223,21 @@ src/polygraphic/      # square/cube/matrix ciphers — each: primitive + a Ciphe
                                      #   -logprob -- it degrades short text; validity reward is ESSENTIAL at the short
                                      #   end, L=16 collapses to 0 without it). Recovers from ~24 letters. No cribs; digit
                                      #   input (1..9) parsed from ciphertext_str. Dispatched by its own early branch.
+  straddling_checkerboard.c straddling_checkerboard_solver.c/.h  # Straddling Checkerboard: a keyed
+                                     #   3-row board over 10 columns -> a variable-length DIGIT stream (high-freq letters take
+                                     #   ONE digit, the rest TWO = indicator + column-label digit). KEYED column labels + a
+                                     #   FIGURE-SHIFT cell (numeric plaintext, 36-symbol A..Z+0..9 alphabet, reuses
+                                     #   init_alphabet_adfgvx). CipherModel anneal. KEY DESIGN: the board is EQUIVALENT to a
+                                     #   FREE bijection from the 28 token codes to 28 cells (26 letters + FIG + NULL); the solver
+                                     #   anneals THAT map (cell-swap), NOT a separate arrangement+labels (which is redundant and
+                                     #   stalls) -- keyed labels fold into the map, the figure-mode digit is the token's own
+                                     #   column digit. Tokenization depends only on the 2 indicator digit-VALUES (C(10,2)=45
+                                     #   configs); no cheap statistic ranks them (IoC / monogram-greedy are ANTI-discriminative),
+                                     #   so a per-config SA MINI-SOLVE pre-pass ranks the 45, keeps top STRADDLING_KEEP=12, and
+                                     #   warm-starts each. Effectively needs -logprob. Letters (incl. keyed labels) recover ~100%
+                                     #   from ~100-150 chars; NUMERIC/figure-shift is a DOCUMENTED LIMITATION (figure-mode digits
+                                     #   carry ~0 n-gram weight + an unrecognized FIG shifts alignment -> blind digit recovery
+                                     #   fails, characterized not asserted). Primitive round-trips numeric fully. No cribs.
 
 src/substitution/     # monoalphabetic / homophonic substitution solvers
   indep_solver.c/.h homophonic_solver.c/.h   # each: a CipherModel + solve_<type>()
@@ -257,6 +272,7 @@ tools/fracmorse_gen.c        # standalone Fractionated Morse generator (make fra
 tools/period_column_gen.c    # standalone Period column order generator (make period_column_gen; space-aware)
 tools/pollux_gen.c           # standalone Pollux generator (make pollux_gen; assignment string + RNG seed)
 tools/morbit_gen.c           # standalone Morbit generator (make morbit_gen; 9-letter keyword)
+tools/straddling_checkerboard_gen.c # standalone Straddling Checkerboard generator (make straddling_checkerboard_gen; keyword, label key or -, two blank columns; carries digits)
 tools/double_transposition_gen.c # standalone double columnar transposition generator (make double_transposition_gen)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
@@ -612,7 +628,7 @@ end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
 
 `ciphers/tests/run_tests.sh` is the **accuracy regression suite**: a manifest of
-75 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
+76 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
 `q*_p1xx` puzzles, pure-transposition types, a homophonic substitution, a Playfair
 cipher, a Bifid cipher, a Trifid cipher, a Hill cipher, the three Phillips
 variants — Row / Column / Row-Column — a Two-Square (horizontal + vertical), a
@@ -634,9 +650,10 @@ pinned), the three Progressive Key bases (`progkey_decl` / `progkey_var_decl` /
 all period pinned), a Fractionated Morse cipher (`fracmorse_pride`, keyed-alphabet anneal,
 `-logprob`), a Period column order cipher (`period_column_pp`, a two-stage 168-letter
 composition solved deterministically, `-depth 2`), a Pollux cipher (`pollux_pp`, a ~90-letter digit
-cipher solved by the deterministic exhaustive 3^10 search, no budget args), and a Morbit cipher
+cipher solved by the deterministic exhaustive 3^10 search, no budget args), a Morbit cipher
 (`morbit_pp`, a ~90-letter digit cipher solved by the deterministic exhaustive 9! search, no budget
-args)) that each
+args), and a Straddling Checkerboard cipher (`straddling_pp`, a ~207-letter digit cipher solved via the
+per-config SA mini-solve pre-pass + warm anneal over the free code→cell substitution, `-logprob`)) that each
 solve to ~100% with a **fixed `-seed`** and quadgrams. It runs the solver, pulls the
 recovered plaintext from the last field of the `>>>` CSV line, compares it
 character-for-character to a sibling `<name>.solution` (bare A–Z plaintext), and prints
@@ -699,7 +716,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `period-column-space`/`pcol-space`/`pcolspace`/`pcolsp`/`transpercolspace`/`72`,
 `transcol2-dc`/`transcol2dc`/`dctrans`/`doublecol-dc`/`dcol`/`73`,
 `pollux`/`pol`/`74`,
-`morbit`/`mor`/`75`
+`morbit`/`mor`/`75`,
+`straddling-checkerboard`/`straddling`/`straddle`/`strad`/`sc`/`76`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1387,6 +1405,55 @@ odd-length trailing-`x` pad, round-trips over random bijections, and the illegal
 non-bijection edges) and `tests/test_morbit_solver.c` (exact recovery, the length cliff, and the
 validity-weight + `-logprob` calibration sweeps); `ciphers/tests/run_tests.sh` carries `morbit_pp` (a
 ~90-letter cipher, ~100%).
+
+The **Straddling Checkerboard** type (`straddling-checkerboard`/`sc`/`76`; `solve_straddling_checkerboard()`,
+`STRADDLING_MODEL`, `SHAPE_ANNEAL`) is the ACA/VIC **"Straddling Checkerboard"** — a keyed 3-row board over
+10 columns enciphering plaintext into a variable-length **DIGIT stream**: 8 high-frequency letters sit on the
+top row and encode to ONE digit (their column label), the other letters + a FIGURE-SHIFT marker fill two
+lower rows (headed by the two blank top columns' labels, the **row indicators**) and encode to TWO digits
+(indicator + column label). The whole cipher was built in its **maximally general** form: **KEYED column
+labels** (the 10 headings may be a secret permutation of 0..9, VIC-style) and **figure-shift** so numeric
+plaintext survives (the plaintext alphabet is the **36-symbol A..Z + 0..9** set, reusing `init_alphabet_adfgvx`
+before `load_ngrams` — figure-mode digits are recovered at negligible n-gram weight, the ADFGVX precedent).
+The primitive (`straddling_checkerboard.c`, hand-verified against the Wikipedia worked example — board `ETAONRIS
+/ BCDFGHJKLM / PQ‹FIG›UVWXYZ`, blanks at columns 2 & 6, `ATTACK AT DAWN → 3113212731223655`) builds a board
+from a 27-symbol keyed arrangement (26 letters + FIG) + the label permutation + the indicator pair, and
+round-trips numeric plaintext (the figure-shift toggles letter/figure mode; a figure-mode token decodes to the
+digit equal to its cell's column label). **THE KEY SOLVER DESIGN** (learned the hard way): a straddling board
+is **EQUIVALENT to a FREE bijection from the 28 token codes (8 single-digit + 20 double-digit) to the 28 board
+cells (26 letters + FIG + NULL)**, so the solver anneals **that code→cell map directly** (`st->key[0..27]`, a
+28-permutation, cell-swap anneal) — **NOT** a separate keyed-arrangement + label-permutation (the first design,
+which is REDUNDANT — labels∘arrangement gives many equivalent boards, a plateau — and stalls at ~85%
+near-misses). Keyed labels **fold into the map** (not separately identifiable ciphertext-only), and the
+figure-mode digit is the token's **own** column digit (intrinsic to the code), so this ONE substitution
+captures the whole general cipher (keyed labels + figure-shift) with no redundant lane and cracks keyed-column
+ciphers at 100%. The digit-stream **tokenization** depends ONLY on which two digit-VALUES are the row
+indicators (a digit equal to an indicator starts a 2-digit token) → exactly **C(10,2) = 45 configs**; **no
+cheap statistic ranks them** — token-IoC and monogram-greedy are BOTH *anti-discriminative* (wrong configs
+GAME a greedy monogram assignment higher than the true one) — so the solver runs a **per-config SA MINI-SOLVE
+pre-pass** (`STRADDLING_PREPASS_ITERS 36000`, 3 restarts of a swap-anneal), ranks all 45, keeps the top
+`STRADDLING_KEEP 12` (a wider keep than the ~6 the cliff would suggest, because the true config can rank ~8th
+on short text), and **warm-starts** each kept config's engine anneal from its mini-solve map (the mini-solve
+essentially solves it; the registry `4x20000 inittemp 0.30` engine phase is a short warm polish). The
+ciphertext DIGIT stream is parsed from the raw string (not the A..Z decode, like Nihilist-Sub/Pollux); the
+decode tiles the variable-length plaintext to the digit length C for a length-fair mean n-gram + a token
+**validity** reward in `score_adjust` (à la fracmorse). It **effectively needs `-logprob`** — the reward-only
+table prefers a common-quadgram near-miss over the true rare-word text (measured 13.73 vs 12.02). **Cribs are
+not used** (the length change breaks the positional map). **NUMERIC / figure-shift is a DOCUMENTED LIMITATION**
+(printed, not asserted, the analog of CM-Bifid even-period / Condi needle): figure-mode digits carry ~0 n-gram
+weight (dragging the true board below wrong configs' gaming optima), and an **unrecognized FIG code decodes as
+an extra letter, SHIFTING alignment** so a mid-stream digit run corrupts the following letters — so blind
+recovery of the digit VALUES fails even when letters solve (emitting figure-mode digits as dropped negative
+sentinels was tried and is CATASTROPHIC — it incentivizes forcing everything into figure mode). **Letters
+(including keyed labels) recover ~100% from ~100–150 chars** (~9s/solve, the 45×36000 pre-pass dominates; see
+`tests/test_straddling_checkerboard_solver.c`, which asserts the letter + keyed-label capability floors and the
+length cliff, and characterizes the numeric limitation). Because the model implements `seed`/`perturb`/`copy`,
+`-method anneal|shotgun|pso` all run on it. Generate test ciphers with `tools/straddling_checkerboard_gen.c`
+(`make straddling_checkerboard_gen`; args are a plaintext, an arrangement keyword, a label key or `-` for
+0..9, and the two blank columns). Unit tests: `tests/test_straddling_checkerboard.c` (primitive — the Wikipedia
+KAT, a keyed-label KAT, a figure-shift round-trip, heavy random round-trip stress, and edges) and
+`tests/test_straddling_checkerboard_solver.c`; `ciphers/tests/run_tests.sh` carries `straddling_pp` (a
+~207-letter cipher, slow tier, `-logprob`, ~100%).
 
 The **Period column order** type (`period-column`/`periodcol`/`pcol`/`transpercol`/`71`;
 `solve_period_column()` + `period_column_search()` in `period_column_solver.c`) is AZdecrypt's

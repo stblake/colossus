@@ -244,6 +244,7 @@
 #include "double_transposition_solver.h"
 #include "pollux_solver.h"
 #include "morbit_solver.h"
+#include "straddling_checkerboard_solver.h"
 
 void init_config(ColossusConfig *cfg) {
     // Set Defaults
@@ -900,6 +901,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Pollux cipher (Morse over a digit -> dot/dash/divider map; deterministic exhaustive 3^10 search).\n\n");
     } else if (cfg.cipher_type == MORBIT) {
         printf("\nAttacking a Morbit cipher (Morse taken in pairs over a pair <-> digit map; deterministic exhaustive 9! search).\n\n");
+    } else if (cfg.cipher_type == STRADDLING_CHECKERBOARD) {
+        printf("\nAttacking a Straddling Checkerboard cipher (keyed-board digit fractionation; keyed labels + figure-shift).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1041,6 +1044,15 @@ int main(int argc, char **argv) {
     if (cfg.cipher_type == BAZERIES && g_alpha == DEFAULT_ALPHABET_SIZE) {
         init_alphabet("J");
         printf("-type bazeries: alphabet forced to %d letters (J->I): %s\n",
+            g_alpha, g_idx_to_char_arr);
+    }
+
+    // Straddling Checkerboard reuses the 36-symbol ADFGVX alphabet (A..Z + 0..9) so that
+    // figure-shifted numeric plaintext is representable and scored (at negligible weight).
+    // Force it here -- before load_ngrams -- unless the user already changed the alphabet.
+    if (cfg.cipher_type == STRADDLING_CHECKERBOARD && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet_adfgvx();
+        printf("-type sc: alphabet forced to %d symbols (A..Z + 0..9): %s\n",
             g_alpha, g_idx_to_char_arr);
     }
 
@@ -1263,6 +1275,11 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     }
     if (cfg->cipher_type == MORBIT) {
         solve_morbit(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == STRADDLING_CHECKERBOARD) {
+        solve_straddling_checkerboard(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
