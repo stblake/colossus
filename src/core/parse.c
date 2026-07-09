@@ -360,4 +360,93 @@ const char *cipher_type_name(int type) {
 
 
 
+// Comma-separated -type aliases for a cipher-type code, mirroring the alias chains in
+// parse_cipher_type() above. Where the same token appears under two types, it is listed
+// only under the type parse_cipher_type() resolves it to (the earliest match) -- e.g.
+// "dcol" resolves to the double columnar (18), not the divide-&-conquer solver (73).
+const char *cipher_type_aliases(int type) {
+    switch (type) {
+        case VIGENERE:                return "vig, vigenere";
+        case QUAGMIRE_1:              return "q1, quag1, quagmire1";
+        case QUAGMIRE_2:              return "q2, quag2, quagmire2";
+        case QUAGMIRE_3:              return "q3, quag3, quagmire3";
+        case QUAGMIRE_4:              return "q4, quag4, quagmire4";
+        case BEAUFORT:                return "beau, beaufort";
+        case PORTA:                   return "porta";
+        case AUTOKEY_0:               return "auto, autokey, auto0, autovig";
+        case AUTOKEY_1:               return "auto1, autokey1, autoquag1";
+        case AUTOKEY_2:               return "auto2, autokey2, autoquag2";
+        case AUTOKEY_3:               return "auto3, autokey3, autoquag3";
+        case AUTOKEY_4:               return "auto4, autokey4, autoquag4";
+        case AUTOKEY_BEAU:            return "auto5, abeau, autobeau, autobeaufort";
+        case AUTOKEY_PORTA:           return "auto6, aporta, autoporta";
+        case TRANSMATRIX:             return "transmatrix, tmatrix, matrix";
+        case TRANSPEROFFSET:          return "transperoffset, transperiodoffset, transperoff, tpo";
+        case TRANSPOSITION:           return "trans, transpo, transposition";
+        case TRANSCOL:                return "transcol, transpocolumnar, columnar, col";
+        case TRANSCOL2:               return "transcol2, doublecolumnar, doublecol, dcol";
+        case RAILFENCE:               return "railfence, rail, rails, varrailfence";
+        case ROUTE:                   return "route, routetransposition, routetramp";
+        case AMSCO:                   return "amsco";
+        case MYSZKOWSKI:              return "myszkowski, mysz";
+        case REDEFENCE:               return "redefence, rede";
+        case CADENUS:                 return "cadenus";
+        case NIHILIST:                return "nihilist, nihilisttransposition, nihilisttramp";
+        case SWAGMAN:                 return "swagman";
+        case GRILLE:                  return "grille, turninggrille";
+        case INDEP_PERIODIC:          return "indep, indperiodic, periodicsub, indepperiodic";
+        case HOMOPHONIC:              return "homophonic, homophone, homo";
+        case PLAYFAIR:                return "playfair, pf";
+        case BIFID:                   return "bifid, bf";
+        case TRIFID:                  return "trifid, tf, tri";
+        case HILL:                    return "hill";
+        case GRONSFELD:               return "gronsfeld, gron";
+        case PHILLIPS:                return "phillips, phil";
+        case PHILLIPS_C:              return "phillips-c, phillipsc, phillips_c, phillipscolumn";
+        case PHILLIPS_RC:             return "phillips-rc, phillipsrc, phillips_rc, phillipsrowcolumn";
+        case TWO_SQUARE:              return "twosquare, two-square, 2square, 2sq, ts";
+        case TWO_SQUARE_V:            return "twosquare-v, twosquarev, two-square-v, 2square-v, 2sq-v, tsv";
+        case FOUR_SQUARE:             return "foursquare, four-square, 4square, 4sq, fs";
+        case TRANSCOL_L:              return "transcol-l, transcoll, columnar-track, coltrack, transcoltrack";
+        case TRANSROUTECOL:           return "transroutecol, routecol, routecolumnar, chain";
+        case TRANSTILE:               return "transtile, tile, subgrid";
+        case ADFGX:                   return "adfgx";
+        case ADFGVX:                  return "adfgvx, adfg";
+        case NIHILIST_SUB:            return "nihilist-sub, nihilistsub, nihilistsubstitution, nihsub";
+        case NIHILIST_SUB_NC:         return "nihilist-sub-nc, nihilistsubnc, nihilist-sub-nocarry, nihsub-nc";
+        case NIHILIST_SUB_M100:       return "nihilist-sub-m100, nihilistsubm100, nihilist-sub-mod100, nihsub-m100";
+        case GROMARK:                 return "gromark, gromark-basic, gm";
+        case GROMARK_PERIODIC:        return "gromark-periodic, periodicgromark, gromark-p, pgromark";
+        case NICODEMUS:               return "nicodemus, nico";
+        case NICODEMUS_VARIANT:       return "nicodemus-variant, nicodemus-v, nicov";
+        case NICODEMUS_BEAUFORT:      return "nicodemus-beaufort, nicodemus-b, nicob";
+        case BAZERIES:                return "bazeries, baz";
+        case PORTAX:                  return "portax, ptx";
+        case PROGKEY:                 return "progkey, pk, progressivekey";
+        case PROGKEY_VAR:             return "progkey-var, progkey-v, pkv";
+        case PROGKEY_BEAU:            return "progkey-beau, progkey-b, pkb";
+        case SLIDEFAIR:               return "slidefair, sf";
+        case SLIDEFAIR_VAR:           return "slidefair-var, slidefair-v, sfv";
+        case SLIDEFAIR_BEAU:          return "slidefair-beau, slidefair-b, sfb";
+        case SERIATED_PLAYFAIR:       return "seriated-playfair, seriatedplayfair, serpf, spf";
+        case DIGRAFID:                return "digrafid, df, dgf";
+        case CM_BIFID:                return "cm-bifid, cmbifid, cmb";
+        case TRI_SQUARE:              return "trisquare, tri-square, 3square, 3sq, trisq";
+        case INTERRUPTED_KEY:         return "interrupted-key, interruptedkey, intkey, ik";
+        case INTERRUPTED_KEY_VAR:     return "interrupted-key-var, intkey-var, ikv";
+        case INTERRUPTED_KEY_BEAU:    return "interrupted-key-beau, intkey-beau, ikb";
+        case CONDI:                   return "condi, cond";
+        case FRAC_MORSE:              return "fractionated-morse, fracmorse, fmorse, fm";
+        case PERIOD_COLUMN:           return "period-column, periodcol, pcol, transpercol";
+        case PERIOD_COLUMN_SPACE:     return "period-column-space, periodcol-space, pcol-space, pcolspace, pcolsp, transpercolspace";
+        case TRANSCOL2_DC:            return "transcol2-dc, transcol2dc, dctrans, doublecol-dc";
+        case POLLUX:                  return "pollux, pol";
+        case MORBIT:                  return "morbit, mor";
+        case STRADDLING_CHECKERBOARD: return "straddling-checkerboard, straddling, straddle, strad, sc";
+        default:                      return NULL;
+    }
+}
+
+
+
 

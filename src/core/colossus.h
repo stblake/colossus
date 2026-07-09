@@ -1115,6 +1115,10 @@ int parse_cipher_type(const char *arg);
 // Short human-readable name for a cipher-type code (0..76). Returns NULL for a code
 // that is not a real cipher type. Used by the "-type all" sweep report.
 const char *cipher_type_name(int type);
+// Comma-separated -type aliases accepted for a cipher-type code (0..76). Returns NULL
+// for a code that is not a real cipher type. Used by the -help reference. Mirrors the
+// alias chains in parse_cipher_type() (which resolves earliest match first).
+const char *cipher_type_aliases(int type);
 int unique_len(char *str);
 void vec_print(int vec[], int len);
 void print_text(int indices[], int len);

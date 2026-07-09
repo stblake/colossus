@@ -554,6 +554,147 @@ static int run_all_types(int argc, char **argv) {
     return 1;
 }
 
+// --- "-help": full usage / option / cipher-type reference -------------------------
+//
+// Printed on -help / -h / --help (or when the binary is run with no arguments). The
+// cipher-type table is driven by cipher_type_name() so it stays authoritative as
+// types are added; the option list mirrors the parse loop in main() and the defaults
+// in init_config().
+static void print_help(const char *prog) {
+    printf(
+"COLOSSUS -- a polyalphabetic / polygraphic / transposition cipher solver.\n"
+"A stochastic, slippery, shotgun-restarted hill climber with backtracking\n"
+"(plus simulated annealing and particle-swarm search), built to crack the\n"
+"Kryptos sculpture's K1-K4. Cipher conventions follow the ACA\n"
+"(https://www.cryptogram.org/resource-area/cipher-types/).\n"
+"\n"
+"USAGE\n"
+"  %s -type <type> -cipher <file> -ngramsize <n> -ngramfile <file> [options]\n"
+"  %s -type <type> -batch  <file> -ngramsize <n> -ngramfile <file> [options]\n"
+"  %s -help\n"
+"\n"
+"  Run from a directory holding the n-gram table, dictionary and ciphertext\n"
+"  (paths are resolved relative to the current working directory).\n"
+"\n"
+"REQUIRED\n"
+"  -type <type>            Cipher type: an alias or an integer code (see CIPHER TYPES).\n"
+"                          'all' sweeps every plausible type in a subprocess each.\n"
+"  -cipher <file>          Ciphertext file (only the FIRST line is read unless\n"
+"                          -multiline). Mutually exclusive with -batch.\n"
+"  -batch <file>           Solve every ciphertext line in the file in turn.\n"
+"  -ngramsize <n>          N-gram order for scoring (typically 4, or 5 with -logprob).\n"
+"  -ngramfile <file>       N-gram frequency table (e.g. english_quadgrams.txt).\n"
+"\n"
+"INPUT / OUTPUT\n"
+"  -multiline              Read the whole -cipher file, concatenating lines into one\n"
+"                          symbol stream (e.g. a homophonic grid).           [off]\n"
+"  -delimiter <c|space>    Field separator for tokenized input; 'space'/'char'/'none'\n"
+"                          selects per-character decode, else the char (e.g. ',').\n"
+"                          [auto: comma for homophonic input, else per-character]\n"
+"  -crib <file>            Known-plaintext crib (aligned to plaintext positions).\n"
+"  -cribs <file>           Alias for -crib.\n"
+"  -dictionary <file>      Word list for the readability report (-dict).\n"
+"                          [auto-loads OxfordEnglishWords.txt if present]\n"
+"  -excludeletter <L>      Drop a letter from the alphabet (e.g. J for 25-letter\n"
+"                          square ciphers). Must precede n-gram load internally.\n"
+"  -verbose                Stream a live search dialog.                        [off]\n"
+"  -seed <uint>            Fix the PRNG seed for reproducible runs.   [time-based]\n"
+"\n"
+"SCORING / N-GRAMS\n"
+"  -logprob                AZDecrypt-style log-probability n-grams with an unseen-\n"
+"                          n-gram floor penalty (recommended for hard substitution\n"
+"                          and square ciphers). Alias -azdecrypt.              [off]\n"
+"  -reversengrams          Reversal-invariant table (each n-gram and its reverse\n"
+"                          share the max weight). Alias -revngrams.            [off]\n"
+"  -weightngram <f>        N-gram score weight.                              [12.0]\n"
+"  -weightcrib <f>         Crib-match score weight.                          [36.0]\n"
+"  -weightioc <f>          Index-of-coincidence score weight.                 [0.0]\n"
+"  -weightentropy <f>      Entropy score weight.                              [0.0]\n"
+"  -weightstructure <f>    Periodic-redundancy guard (general transposition). [4.0]\n"
+"  -weightmono <f>         Homophonic monogram chi-squared anti-collapse.     [1.0]\n"
+"  -weightword <f>         Dictionary word-coverage reward (transposition).   [0.0]\n"
+"\n"
+"SEARCH CONTROL\n"
+"  -method <m>             shotgun | anneal (sa) | pso.        [per-type default]\n"
+"  -nrestarts <n>          Random restarts (the robustness lever).             [1]\n"
+"  -nhillclimbs <n>        Iterations per restart.                          [1000]\n"
+"  -inittemp <f>           Annealing start temperature (-initialtemp).      [0.10]\n"
+"  -mintemp <f>            Annealing floor temperature.                    [0.001]\n"
+"  -coolingrate <f>        Geometric cooling rate; 0 => derive from budget.   [0.0]\n"
+"  -backtrackprob <f>      Backtrack-to-best probability.                    [0.15]\n"
+"  -slipprob <f>           Accept-worse (slip) probability (shotgun).       [0.001]\n"
+"  -keywordpermprob <f>    Per-iteration keyword perturbation probability.  [0.95]\n"
+"  -optimalcycle           Derive each column key deterministically (default).  [on]\n"
+"  -stochasticcycle        Perturb the cycleword randomly instead.           [off]\n"
+"\n"
+"PARTICLE SWARM (-method pso)\n"
+"  -nparticles <n>         Swarm size (-npart).                               [30]\n"
+"  -inertia <f>            Inertia weight.                                   [0.7]\n"
+"  -cognitive <f>          Cognitive (pbest) pull (-cog).                    [1.5]\n"
+"  -social <f>             Social (gbest) pull (-soc).                       [1.5]\n"
+"  -refine <n>             Greedy local-refinement steps per particle (-psorefine). [50]\n"
+"\n"
+"PERIODIC / KEYWORD\n"
+"  -period <n>             Pin the fractionation/pairing period (else estimate/sweep).\n"
+"  -maxperiod <n>          Upper bound for the period estimator. [min(20, len/2)]\n"
+"  -nperiods <n>           Top-K candidate periods to anneal.                  [5]\n"
+"  -cyclewordlen <n>       Pin the cycleword length.\n"
+"  -maxcyclewordlen <n>    Upper bound for cycleword-length search.           [20]\n"
+"  -keywordlen <n>         Pin the keyword length.\n"
+"  -maxkeywordlen <n>      Upper bound for keyword-length search.\n"
+"  -plaintextkeyword <w>   Pin the plaintext keyed alphabet.\n"
+"  -ciphertextkeyword <w>  Pin the ciphertext keyed alphabet.\n"
+"  -plaintextkeywordlen <n> / -ciphertextkeywordlen <n>   Pin those lengths.\n"
+"  -nsigmathreshold <f>    IoC period-estimation Z-score threshold.          [1.0]\n"
+"  -iocthreshold <f>       IoC acceptance threshold.                       [0.047]\n"
+"  -samekey                Tie the keyword and cycleword together.           [off]\n"
+"  -variant                Swap encrypt/decrypt in the Quagmire/Vigenere math.[off]\n"
+"  -mincols <n>            Bottom of a swept column/period range.              [2]\n"
+"  -maxcols <n>            Top of a swept column/period range.                [30]\n"
+"\n"
+"PER-CIPHER OPTIONS\n"
+"  -nprimers <n>           Gromark primer pre-pass top-K.        [auto by length]\n"
+"  -progression <n>        Progressive Key: pin the drift index (else sweep 0..25).\n"
+"  -interruptor <A-Z>      Interrupted Key: pin the interruptor letter (else 26).\n"
+"  -intscheme <s>          Interrupted Key strategy: ct | pt | breaks | joint.\n"
+"  -breaks <file>          Interrupted Key: supplied group-start positions.\n"
+"  -startkey <n>           Condi: pin the starter offset 0..25 (else enumerate).\n"
+"  -blockheight <n>        Nicodemus: pin rows per block (else sweep).\n"
+"  -maxblockheight <n>     Nicodemus: top of the block-height sweep.\n"
+"  -skipspaces             Strip spaces before solving.                       [off]\n"
+"\n"
+"TRANSPOSITION\n"
+"  -readdir <tb|bt|both>   Columnar read direction.                          [tb]\n"
+"  -readrowdir <lr|rl|both> Within-row read direction (transcol-L/chain).     [lr]\n"
+"  -cribanchored           Use the crib as a structural column-order constraint.[off]\n"
+"  -tile <h> <w>           Sub-grid tile shape for transtile.                [2 2]\n"
+"  -depth <1|2>            Period-column: max composed stages searched.         [2]\n"
+"  -maxgaps <n>            Period-column-space: max inserted gap cells.         [4]\n"
+"  -maxdels <n>            Period-column-space: max deleted observed cells.     [2]\n"
+"  -transperoffset <o> <p> Post-decrypt periodic-decimation transposition stage.\n"
+"  -transmatrix <w1> <w2> <cw|ccw>  Post-decrypt double-rotation transposition.\n"
+"\n", prog, prog, prog);
+
+    printf("CIPHER TYPES  (-type accepts the integer code or any listed alias)\n");
+    printf("  code  name                                aliases\n");
+    for (int t = 0; t <= STRADDLING_CHECKERBOARD; t++) {
+        const char *name = cipher_type_name(t);
+        if (name)
+            printf("  %3d   %-35s %s\n", t, name, cipher_type_aliases(t));
+    }
+    printf("   --   %-35s %s\n", "sweep every plausible type", "all, any, sweep");
+    printf(
+"\n"
+"EXAMPLES\n"
+"  colossus -type q3 -cipher cipher.txt -ngramsize 4 -ngramfile english_quadgrams.txt\n"
+"  colossus -type playfair -cipher pf.txt -ngramsize 5 -ngramfile english_quintgrams.txt -logprob\n"
+"  colossus -type transcol -cipher ct.txt -ngramsize 4 -ngramfile english_quadgrams.txt -mincols 2 -maxcols 15\n"
+"  colossus -type all -cipher ct.txt -ngramsize 4 -ngramfile english_quadgrams.txt\n"
+"\n"
+"See README.md and CLAUDE.md for the full writeup and per-type notes.\n"
+"\n");
+}
+
 int main(int argc, char **argv) {
     ColossusConfig cfg;
     SharedData shared;
@@ -563,6 +704,19 @@ int main(int argc, char **argv) {
 
     printf("\n\nCOLOSSUS Cipher Solver\n\n");
     printf("Written by Sam Blake, started 14 July 2023.\n\n");
+
+    // -help / -h / --help (or no arguments): print the full usage reference and exit.
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-help") == 0 || strcmp(argv[i], "-h") == 0 ||
+            strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "help") == 0) {
+            print_help(argv[0]);
+            return 0;
+        }
+    }
+    if (argc == 1) {
+        print_help(argv[0]);
+        return 0;
+    }
 
     // Seed the PRNG with the current Unix time (seconds since Epoch).
     // A -seed <uint> argument (parsed below) overrides this for reproducible runs.
