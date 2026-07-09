@@ -16,6 +16,18 @@
 #define CRIB_CHECK 0
 #define PARTIAL_CRIB_MATCH 1
 
+// Crib dragging (-cribdrag): known plaintext WORDS whose positions are unknown. Each
+// word is slid across the decrypt every evaluation; the best-matching offset is
+// rewarded (see cribdrag_score in scoring.c). Unlike -crib (positioned), a dragged
+// crib floats. The container below holds the parsed words as alphabet indices.
+#define MAX_CRIBDRAG_WORDS 16
+#define MAX_CRIBDRAG_LEN   64
+typedef struct CribDrag {
+    int nwords;
+    int wordlen[MAX_CRIBDRAG_WORDS];
+    int words[MAX_CRIBDRAG_WORDS][MAX_CRIBDRAG_LEN];  // alphabet indices 0..g_alpha-1
+} CribDrag;
+
 #define VIGENERE 0
 #define QUAGMIRE_1 1
 #define QUAGMIRE_2 2
@@ -336,6 +348,7 @@ typedef struct {
     // Weights
     float weight_ngram;
     float weight_crib;
+    float weight_cribdrag;  // crib-dragging reward weight (see -cribdrag / cribdrag_score)
     float weight_ioc;
     float weight_entropy;
     float weight_structure; // general transposition: reward regular (columnar) key steps
@@ -347,6 +360,7 @@ typedef struct {
     char ciphertext_file[MAX_FILENAME_LEN];
     char batch_file[MAX_FILENAME_LEN];
     char crib_file[MAX_FILENAME_LEN];
+    char cribdrag_string[MAX_FILENAME_LEN];  // raw -cribdrag arg: WORD or WORDA|WORDB|...
     char dictionary_file[MAX_FILENAME_LEN];
     char ngram_file[MAX_FILENAME_LEN];
 
@@ -357,6 +371,8 @@ typedef struct {
     bool cipher_present;
     bool batch_present;
     bool crib_present;
+    bool cribdrag_present;
+    CribDrag cribdrag;              // parsed -cribdrag words (alphabet indices)
     bool dictionary_present;
     bool variant;
     bool beaufort;
@@ -1149,6 +1165,8 @@ void print_cipher(const int indices[], int len, const SymbolTable *tab);
 // modular arithmetic, and the n-gram packing base use g_alpha.
 extern bool g_ngram_logprob;      // n-gram scoring mode (see utils.c); false = legacy
 extern bool g_ngram_reverse;      // reversal-invariant table (see utils.c); false = off
+extern const CribDrag *g_cribdrag; // dragged cribs consulted by state_score; NULL = off
+extern float g_cribdrag_weight;    // crib-drag blend weight; 0 = off
 extern int  g_alpha;              // runtime alphabet size (<= ALPHABET_SIZE)
 extern int  g_char_to_idx[128];   // ASCII (upper) -> alphabet index, or -1 if absent
 extern char g_idx_to_char_arr[MAX_ALPHABET_SIZE + 1];  // alphabet index -> char (room for 27)

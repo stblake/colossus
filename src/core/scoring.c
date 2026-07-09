@@ -1,12 +1,20 @@
 #include "scoring.h"
 
-double state_score(int decrypted[], int cipher_len, 
-            int crib_indices[], int crib_positions[], int n_cribs, 
-            float *ngram_data, int ngram_size, 
-            float weight_ngram, float weight_crib, 
+// Crib-dragging scoring globals (see -cribdrag). Default off => state_score is
+// bit-identical to the pre-feature behaviour. Set from main() once the words are
+// parsed, mirroring the g_ngram_logprob / g_ngram_reverse scoring-toggle pattern.
+const CribDrag *g_cribdrag = NULL;
+float g_cribdrag_weight = 0.0f;
+
+double state_score(int decrypted[], int cipher_len,
+            int crib_indices[], int crib_positions[], int n_cribs,
+            float *ngram_data, int ngram_size,
+            float weight_ngram, float weight_crib,
             float weight_ioc, float weight_entropy) {
 
-    double score, decrypted_ngram_score = 0., decrypted_crib_score = 0.;
+    double score, decrypted_ngram_score = 0., decrypted_crib_score = 0., drag_score = 0.;
+
+    int have_drag = (g_cribdrag && g_cribdrag_weight > 1.e-4 && g_cribdrag->nwords > 0);
 
     if (weight_crib > 1.e-4) {
         decrypted_crib_score = crib_score(decrypted, cipher_len, crib_indices, crib_positions, n_cribs);
@@ -16,14 +24,54 @@ double state_score(int decrypted[], int cipher_len,
         decrypted_ngram_score = ngram_score(decrypted, cipher_len, ngram_data, ngram_size);
     }
 
-    if (n_cribs > 0) {
-        score = weight_ngram * decrypted_ngram_score + weight_crib * decrypted_crib_score;
-        score /= weight_ngram + weight_crib;
+    if (have_drag) {
+        drag_score = cribdrag_score(decrypted, cipher_len, g_cribdrag);
+    }
+
+    if (n_cribs > 0 || have_drag) {
+        double num = weight_ngram * decrypted_ngram_score;
+        double den = weight_ngram;
+        if (n_cribs > 0)  { num += weight_crib * decrypted_crib_score; den += weight_crib; }
+        if (have_drag)    { num += g_cribdrag_weight * drag_score;      den += g_cribdrag_weight; }
+        score = num / den;
     } else {
         score = decrypted_ngram_score;
     }
 
     return score;
+}
+
+// Crib dragging: each supplied word is slid across the decrypt and its BEST-matching
+// offset scored (max over offsets). The reward is the mean of the per-word bests
+// (== AND: every word is expected to appear somewhere). Per-letter matching mirrors
+// crib_score's PARTIAL_CRIB_MATCH convention so the hill-climber gets a gradient.
+double cribdrag_score(int text[], int len, const CribDrag *cd) {
+    if (!cd || cd->nwords <= 0) return 0.;
+    double total = 0.;
+    for (int w = 0; w < cd->nwords; w++) {
+        int L = cd->wordlen[w];
+        if (L <= 0 || L > len) continue;   // word can't fit -> contributes 0
+        const int *word = cd->words[w];
+        double best = 0.;
+        for (int off = 0; off + L <= len; off++) {
+            double m = 0.;
+            for (int j = 0; j < L; j++) {
+                int diff = abs(text[off + j] - word[j]);
+#if PARTIAL_CRIB_MATCH
+                m += (diff == 0) ? 1. : 1./(1. + diff * diff);
+#else
+                m += (diff == 0) ? 1. : 0.;
+#endif
+            }
+            m /= (double) L;
+            if (m > best) {
+                best = m;
+                if (best >= 1.) break;     // exact hit: no better offset possible
+            }
+        }
+        total += best;
+    }
+    return total / ((double) cd->nwords);
 }
 
 

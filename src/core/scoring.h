@@ -20,6 +20,8 @@ double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram
 // hence Held-Karp best row ordering) possible. Not used by any existing solve.
 double ngram_sum_raw(const int *text, int len, const float *ngram_data, int ngram_size);
 double crib_score(int text[], int len, int crib_indices[], int crib_positions[], int n_cribs);
+// Crib dragging: mean over words of each word's best-offset partial match (see -cribdrag).
+double cribdrag_score(int text[], int len, const CribDrag *cd);
 
 float* load_ngrams(char *ngram_file, int ngram_size, bool verbose);
 int ngram_index_int(int *ngram, int ngram_size);

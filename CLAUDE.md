@@ -757,6 +757,28 @@ reversal hypothesis). Trade-off: the symmetric table can no longer tell a text f
 reverse, so it roughly doubles the acceptable solution set (mild extra gaming room at large
 transposition keys). Default off => the table and every existing solve are **bit-identical**.
 
+**`-cribdrag WORD` (or `-cribdrag WORDA|WORDB|WORDC`).** **Crib dragging** — the
+position-free counterpart to `-crib` (which pins known plaintext to *absolute* cipher
+positions). Supply one or more known plaintext WORDS whose positions are unknown; every
+evaluation each word is slid across the current decrypt and its **best-matching offset**
+is rewarded (max over offsets of a per-letter partial match, the same
+`PARTIAL_CRIB_MATCH` `1/(1+d^2)` convention as `crib_score`, so the climber gets a
+gradient pulling each word into place). Pipe-separated words mean **AND** — the reward is
+the **mean over words** of each word's best offset (all words expected to appear).
+Implemented as a **global scoring toggle** (`g_cribdrag`/`g_cribdrag_weight` in
+`scoring.c`, parsed from the CLI in `main()` and armed after the alphabet is live),
+consulted inside `state_score` alongside the n-gram and fixed-crib terms
+(`cribdrag_score`, blended by `-weightcribdrag`, default 36.0 — same scale as
+`weight_crib`); coexists with a fixed `-crib` (both blend). Because it rides `state_score`
+it works for **every** solver that scores through it — the polyalphabetic family (incl.
+Vigenère/Quagmire), the polygraphic/square types, and the transposition/deterministic
+solvers alike. Note: for a plain Vigenère the default `-optimalcycle` derives the
+cycleword deterministically by column monograms (not by score), so the drag term steers
+the search most under **`-stochasticcycle`** (or on types whose whole key is score-driven).
+Non-letters inside a word (and chars outside the runtime alphabet) are stripped; words are
+clamped to `MAX_CRIBDRAG_WORDS`/`MAX_CRIBDRAG_LEN`. Default off (`g_cribdrag == NULL`) =>
+`state_score` is **bit-identical** to before (verified: `run_tests.sh --fast` 39/39 100%).
+
 Five **pure transposition** cipher types bypass the keyword/cycleword/period machinery
 and are solved by optimization instead (all isolated from the polyalphabetic pipeline by
 an early branch in `solve_cipher`):

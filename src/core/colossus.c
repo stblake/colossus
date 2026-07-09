@@ -56,6 +56,10 @@
             Path to a file containing multiple ciphers (one per line) for batch processing.
         -crib <file> : str
             Path to the crib file. Use "_" for unknown characters. Must match cipher length.
+        -cribdrag <WORD|WORD2|...> : str, optional
+            Known plaintext word(s) of unknown position. Each is dragged across the
+            decrypt every evaluation and its best-fitting offset rewarded; multiple
+            pipe-separated words are all expected to appear (AND).
         -dictionary <file> : str, optional
             Path to a dictionary file (one word per line). Defaults to "OxfordEnglishWords.txt".
         -verbose : flag
@@ -291,6 +295,8 @@ void init_config(ColossusConfig *cfg) {
     cfg->cipher_present = false;
     cfg->batch_present = false;
     cfg->crib_present = false;
+    cfg->cribdrag_present = false;
+    cfg->cribdrag.nwords = 0;
     cfg->dictionary_present = false;
     cfg->verbose = false;
     cfg->skip_spaces = false;
@@ -306,6 +312,7 @@ void init_config(ColossusConfig *cfg) {
 
     cfg->weight_ngram = 12.0;
     cfg->weight_crib = 36.0;
+    cfg->weight_cribdrag = 36.0;   // crib-drag reward weight (same scale as weight_crib)
     cfg->weight_ioc = 0.0;
     cfg->weight_entropy = 0.0;
     cfg->weight_structure = 4.0;
@@ -593,6 +600,8 @@ static void print_help(const char *prog) {
 "                          [auto: comma for homophonic input, else per-character]\n"
 "  -crib <file>            Known-plaintext crib (aligned to plaintext positions).\n"
 "  -cribs <file>           Alias for -crib.\n"
+"  -cribdrag <W|W2|...>    Dragged crib: known plaintext WORD(S), position unknown;\n"
+"                          each is slid across the decrypt and its best fit rewarded.\n"
 "  -dictionary <file>      Word list for the readability report (-dict).\n"
 "                          [auto-loads OxfordEnglishWords.txt if present]\n"
 "  -excludeletter <L>      Drop a letter from the alphabet (e.g. J for 25-letter\n"
@@ -608,6 +617,7 @@ static void print_help(const char *prog) {
 "                          share the max weight). Alias -revngrams.            [off]\n"
 "  -weightngram <f>        N-gram score weight.                              [12.0]\n"
 "  -weightcrib <f>         Crib-match score weight.                          [36.0]\n"
+"  -weightcribdrag <f>     Crib-dragging reward weight (-cribdrag).          [36.0]\n"
 "  -weightioc <f>          Index-of-coincidence score weight.                 [0.0]\n"
 "  -weightentropy <f>      Entropy score weight.                              [0.0]\n"
 "  -weightstructure <f>    Periodic-redundancy guard (general transposition). [4.0]\n"
@@ -784,6 +794,11 @@ int main(int argc, char **argv) {
             cfg.crib_present = true;
             strcpy(cfg.crib_file, argv[++i]);
             printf("-crib %s\n", cfg.crib_file);
+        } else if (strcmp(argv[i], "-cribdrag") == 0) {
+            cfg.cribdrag_present = true;
+            strncpy(cfg.cribdrag_string, argv[++i], MAX_FILENAME_LEN - 1);
+            cfg.cribdrag_string[MAX_FILENAME_LEN - 1] = '\0';
+            printf("-cribdrag %s\n", cfg.cribdrag_string);
         } else if (strcmp(argv[i], "-ngramsize") == 0) {
             cfg.ngram_size = atoi(argv[++i]);
             printf("-ngramsize %d\n", cfg.ngram_size);
@@ -919,9 +934,12 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-weightngram") == 0) { 
             cfg.weight_ngram = atof(argv[++i]);
             printf("-weightngram %.4f\n", cfg.weight_ngram);
-        } else if (strcmp(argv[i], "-weightcrib") == 0) { 
+        } else if (strcmp(argv[i], "-weightcrib") == 0) {
             cfg.weight_crib = atof(argv[++i]);
             printf("-weightcrib %.4f\n", cfg.weight_crib);
+        } else if (strcmp(argv[i], "-weightcribdrag") == 0) {
+            cfg.weight_cribdrag = atof(argv[++i]);
+            printf("-weightcribdrag %.4f\n", cfg.weight_cribdrag);
         } else if (strcmp(argv[i], "-weightioc") == 0) { 
             cfg.weight_ioc = atof(argv[++i]);
             printf("-weightioc %.4f\n", cfg.weight_ioc);
@@ -1441,6 +1459,38 @@ int main(int argc, char **argv) {
         } else {
             printf("\nERROR: missing file '%s'\n", cfg.crib_file);
             return 0;
+        }
+    }
+
+    // Parse -cribdrag WORD|WORD2|... into alphabet indices now that the alphabet
+    // (g_char_to_idx) is live, then arm the scoring globals consulted by state_score.
+    // Non-letters within a word (and chars absent from the runtime alphabet) are skipped.
+    if (cfg.cribdrag_present) {
+        char cribdrag_copy[MAX_FILENAME_LEN];
+        strncpy(cribdrag_copy, cfg.cribdrag_string, MAX_FILENAME_LEN - 1);
+        cribdrag_copy[MAX_FILENAME_LEN - 1] = '\0';
+        cfg.cribdrag.nwords = 0;
+        char *tok = strtok(cribdrag_copy, "|");
+        while (tok && cfg.cribdrag.nwords < MAX_CRIBDRAG_WORDS) {
+            int w = cfg.cribdrag.nwords;
+            int L = 0;
+            for (char *p = tok; *p && L < MAX_CRIBDRAG_LEN; p++) {
+                int idx = g_char_to_idx[toupper((unsigned char)*p) & 127];
+                if (idx >= 0) cfg.cribdrag.words[w][L++] = idx;
+            }
+            if (L > 0) {
+                cfg.cribdrag.wordlen[w] = L;
+                cfg.cribdrag.nwords++;
+            }
+            tok = strtok(NULL, "|");
+        }
+        if (cfg.cribdrag.nwords > 0) {
+            g_cribdrag = &cfg.cribdrag;
+            g_cribdrag_weight = cfg.weight_cribdrag;
+            printf("-cribdrag: %d word(s) armed (weight %.4f)\n",
+                cfg.cribdrag.nwords, cfg.weight_cribdrag);
+        } else {
+            printf("-cribdrag: no valid letters parsed; ignoring\n");
         }
     }
 
