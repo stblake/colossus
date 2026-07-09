@@ -24,6 +24,9 @@ int parse_cipher_type(const char *arg) {
 
     // Check string aliases (case insensitive.)
     
+    // Sweep every plausible cipher type (see run_all_types in colossus.c).
+    if (str_eq(arg, "all") || str_eq(arg, "any") || str_eq(arg, "sweep")) return TYPE_ALL;
+
     // Vigenere
     if (str_eq(arg, "vig") || str_eq(arg, "vigenere")) return VIGENERE;
 
@@ -266,6 +269,93 @@ int parse_cipher_type(const char *arg) {
 
     // Return -1 to indicate invalid/unknown type.
     return -1;
+}
+
+
+
+// Short human-readable name for a cipher-type code (0..76). Returns NULL for a code
+// that is not a real cipher type, so callers can skip gaps when iterating.
+const char *cipher_type_name(int type) {
+    switch (type) {
+        case VIGENERE:                return "Vigenere";
+        case QUAGMIRE_1:              return "Quagmire I";
+        case QUAGMIRE_2:              return "Quagmire II";
+        case QUAGMIRE_3:              return "Quagmire III";
+        case QUAGMIRE_4:              return "Quagmire IV";
+        case BEAUFORT:                return "Beaufort";
+        case PORTA:                   return "Porta";
+        case AUTOKEY_0:               return "Autokey (Vigenere)";
+        case AUTOKEY_1:               return "Autokey (Quagmire I)";
+        case AUTOKEY_2:               return "Autokey (Quagmire II)";
+        case AUTOKEY_3:               return "Autokey (Quagmire III)";
+        case AUTOKEY_4:               return "Autokey (Quagmire IV)";
+        case AUTOKEY_BEAU:            return "Autokey (Beaufort)";
+        case AUTOKEY_PORTA:           return "Autokey (Porta)";
+        case TRANSMATRIX:             return "Transposition (matrix)";
+        case TRANSPEROFFSET:          return "Transposition (period+offset)";
+        case TRANSPOSITION:           return "Transposition (general)";
+        case TRANSCOL:                return "Columnar transposition";
+        case TRANSCOL2:               return "Double columnar transposition";
+        case RAILFENCE:               return "Rail fence";
+        case ROUTE:                   return "Route transposition";
+        case AMSCO:                   return "Amsco";
+        case MYSZKOWSKI:              return "Myszkowski";
+        case REDEFENCE:               return "Redefence";
+        case CADENUS:                 return "Cadenus";
+        case NIHILIST:                return "Nihilist transposition";
+        case SWAGMAN:                 return "Swagman";
+        case GRILLE:                  return "Turning grille";
+        case INDEP_PERIODIC:          return "Independent periodic substitution";
+        case HOMOPHONIC:              return "Homophonic substitution";
+        case PLAYFAIR:                return "Playfair";
+        case BIFID:                   return "Bifid";
+        case TRIFID:                  return "Trifid";
+        case HILL:                    return "Hill";
+        case GRONSFELD:               return "Gronsfeld";
+        case PHILLIPS:                return "Phillips (Row)";
+        case PHILLIPS_C:              return "Phillips (Column)";
+        case PHILLIPS_RC:             return "Phillips (Row-Column)";
+        case TWO_SQUARE:              return "Two-Square (horizontal)";
+        case TWO_SQUARE_V:            return "Two-Square (vertical)";
+        case FOUR_SQUARE:             return "Four-Square";
+        case TRANSCOL_L:              return "Columnar-track (transcol-L)";
+        case TRANSROUTECOL:           return "Route + column key";
+        case TRANSTILE:               return "Tile transposition";
+        case ADFGX:                   return "ADFGX";
+        case ADFGVX:                  return "ADFGVX";
+        case NIHILIST_SUB:            return "Nihilist Substitution (carry)";
+        case NIHILIST_SUB_NC:         return "Nihilist Substitution (no-carry)";
+        case NIHILIST_SUB_M100:       return "Nihilist Substitution (mod 100)";
+        case GROMARK:                 return "Gromark";
+        case GROMARK_PERIODIC:        return "Periodic Gromark";
+        case NICODEMUS:               return "Nicodemus (Vigenere)";
+        case NICODEMUS_VARIANT:       return "Nicodemus (Variant)";
+        case NICODEMUS_BEAUFORT:      return "Nicodemus (Beaufort)";
+        case BAZERIES:                return "Bazeries";
+        case PORTAX:                  return "Portax";
+        case PROGKEY:                 return "Progressive Key (Vigenere)";
+        case PROGKEY_VAR:             return "Progressive Key (Variant)";
+        case PROGKEY_BEAU:            return "Progressive Key (Beaufort)";
+        case SLIDEFAIR:               return "Slidefair (Vigenere)";
+        case SLIDEFAIR_VAR:           return "Slidefair (Variant)";
+        case SLIDEFAIR_BEAU:          return "Slidefair (Beaufort)";
+        case SERIATED_PLAYFAIR:       return "Seriated Playfair";
+        case DIGRAFID:                return "Digrafid";
+        case CM_BIFID:                return "CM Bifid";
+        case TRI_SQUARE:              return "Tri-Square";
+        case INTERRUPTED_KEY:         return "Interrupted Key (Vigenere)";
+        case INTERRUPTED_KEY_VAR:     return "Interrupted Key (Variant)";
+        case INTERRUPTED_KEY_BEAU:    return "Interrupted Key (Beaufort)";
+        case CONDI:                   return "Condi";
+        case FRAC_MORSE:              return "Fractionated Morse";
+        case PERIOD_COLUMN:           return "Period column order";
+        case PERIOD_COLUMN_SPACE:     return "Period column order (space-robust)";
+        case TRANSCOL2_DC:            return "Double columnar (divide & conquer)";
+        case POLLUX:                  return "Pollux";
+        case MORBIT:                  return "Morbit";
+        case STRADDLING_CHECKERBOARD: return "Straddling Checkerboard";
+        default:                      return NULL;
+    }
 }
 
 

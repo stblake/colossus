@@ -68,6 +68,9 @@
     Cipher Configuration:
         -type <int> : int
             The cipher algorithm to solve:
+            all, any, sweep   : run every plausible cipher type (a subprocess per type;
+                                types the ciphertext plainly cannot be are skipped) and
+                                print a best-score leaderboard.
             vigenere, vig, 0  : Vigenere
             quagmire1, quag1, q1, 1  : Quagmire I
             quagmire2, quag2, q2, 2  : Quagmire II
@@ -246,6 +249,8 @@
 #include "morbit_solver.h"
 #include "straddling_checkerboard_solver.h"
 
+#include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
+
 void init_config(ColossusConfig *cfg) {
     // Set Defaults
     cfg->cipher_type = -1;
@@ -351,6 +356,204 @@ void init_config(ColossusConfig *cfg) {
 // its dependencies live in this file) while supplying their own main:
 // compile this translation unit with -DCOLOSSUS_NO_MAIN.
 #ifndef COLOSSUS_NO_MAIN
+
+// --- "-type all": sweep every plausible cipher type ------------------------------
+//
+// Every cipher type sets up its own alphabet size and n-gram base (25/26/27/36) and,
+// for the digit ciphers, its own ciphertext parser -- all keyed on the type and fixed
+// once, before load_ngrams(), in main(). Rather than tear that one-shot global setup
+// apart to loop in-process, "-type all" re-runs this very binary once per candidate
+// type (a subprocess inherits ALL the same flags with only the -type value replaced),
+// so each solve gets its correct, untouched setup. A cheap pre-filter over the
+// ciphertext skips types the input plainly cannot be (see cipher_type_plausible).
+
+// Read the ciphertext sample used ONLY for the pre-filter, mirroring main's reader:
+// the first line of -cipher, or the first non-trivial line of a -batch file. The real
+// solve is done by each child on the untouched -cipher/-batch argument.
+static void read_cipher_sample(int argc, char **argv, char *buf, int cap) {
+    const char *cipher_file = NULL, *batch_file = NULL;
+    bool multiline = false;
+    buf[0] = '\0';
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-cipher") == 0 && i + 1 < argc) cipher_file = argv[i + 1];
+        else if (strcmp(argv[i], "-batch") == 0 && i + 1 < argc) batch_file = argv[i + 1];
+        else if (strcmp(argv[i], "-multiline") == 0) multiline = true;
+    }
+    const char *path = cipher_file ? cipher_file : batch_file;
+    if (!path || !file_exists(path)) return;
+    FILE *fp = fopen(path, "r");
+    if (!fp) return;
+    if (batch_file && !cipher_file) {
+        char line[MAX_CIPHER_LENGTH];
+        while (fgets(line, sizeof line, fp)) {
+            line[strcspn(line, "\r\n")] = 0;
+            if (strlen(line) >= 5) { strncpy(buf, line, cap - 1); buf[cap - 1] = '\0'; break; }
+        }
+    } else {
+        int ci = 0, ch;
+        while ((ch = fgetc(fp)) != EOF && (multiline || ch != '\n') && ci < cap - 1) {
+            if (ch == '\r' || ch == '\n') continue;
+            buf[ci++] = (char) ch;
+        }
+        buf[ci] = '\0';
+    }
+    fclose(fp);
+}
+
+// Fast, conservative "could this ciphertext be of this type?" test. Only returns
+// false when the input is IMMEDIATELY, structurally incompatible with the type -- it
+// never gambles on statistics, so a plausible type is always run.
+//   - The six digit-stream ciphers (Pollux, Morbit, Straddling, Nihilist-Sub x3) need
+//     an all-digit ciphertext; every letter-based type needs letters.
+//   - Morbit's digits are 1..9, so a '0' rules it out.
+//   - ADFGX / ADFGVX ciphertext is written only in their label letters.
+static bool cipher_type_plausible(int type, const char *cipher) {
+    bool has_letters = false, has_digits = false, has_zero = false;
+    bool seen[26]; memset(seen, 0, sizeof seen);
+    for (const char *p = cipher; *p; p++) {
+        unsigned char c = (unsigned char) *p;
+        if (isalpha(c)) { has_letters = true; seen[toupper(c) - 'A'] = true; }
+        else if (isdigit(c)) { has_digits = true; if (c == '0') has_zero = true; }
+    }
+    if (!has_letters && !has_digits) return true;   // degenerate input: don't skip
+
+    bool digit_family = (type == POLLUX || type == MORBIT ||
+                         type == STRADDLING_CHECKERBOARD ||
+                         type == NIHILIST_SUB || type == NIHILIST_SUB_NC ||
+                         type == NIHILIST_SUB_M100);
+
+    if (has_digits && !has_letters) {
+        // Pure-digit ciphertext: only the digit-stream ciphers are possible.
+        if (!digit_family) return false;
+        if (type == MORBIT && has_zero) return false;   // Morbit emits digits 1..9
+        return true;
+    }
+
+    // Ciphertext contains letters: the digit-stream ciphers are ruled out.
+    if (digit_family) return false;
+
+    // ADFGX / ADFGVX ciphertext uses only its fractionation-label letters.
+    if (type == ADFGX || type == ADFGVX) {
+        const char *labels = (type == ADFGX) ? "ADFGX" : "ADFGVX";
+        for (int c = 0; c < 26; c++)
+            if (seen[c] && !strchr(labels, 'A' + c)) return false;
+    }
+    return true;
+}
+
+// Run the "-type all" sweep: for every plausible cipher type, re-exec this binary
+// with the -type value overridden to that type's integer code, tee the child's output
+// through to our stdout, and record its best ">>>" score for a final leaderboard.
+static int run_all_types(int argc, char **argv) {
+    // Find the -type value slot so each child can override it in place.
+    int type_slot = -1;
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "-type") == 0 && i + 1 < argc) { type_slot = i + 1; break; }
+    if (type_slot < 0) {
+        printf("\n\nERROR: -type all needs a -type argument.\n\n");
+        return 0;
+    }
+
+    char sample[MAX_CIPHER_LENGTH];
+    read_cipher_sample(argc, argv, sample, sizeof sample);
+
+    printf("\n=== -type all: sweeping every plausible cipher type ===\n");
+    if (sample[0])
+        printf("Ciphertext sample (%zu chars): %.72s%s\n",
+               strlen(sample), sample, strlen(sample) > 72 ? " ..." : "");
+    printf("Each type is solved in a subprocess with all your other flags unchanged.\n");
+
+    // A mutable copy of argv, NUL-terminated for execvp.
+    char **child_argv = malloc((size_t)(argc + 1) * sizeof *child_argv);
+    for (int i = 0; i < argc; i++) child_argv[i] = argv[i];
+    child_argv[argc] = NULL;
+
+    typedef struct { int type; double score; bool ran; } SweepResult;
+    SweepResult board[N_CIPHER_TYPES];
+    int nboard = 0, n_run = 0, n_skipped = 0;
+
+    for (int t = 0; t < N_CIPHER_TYPES; t++) {
+        const char *name = cipher_type_name(t);
+        if (!name) continue;   // not a real type code
+
+        if (!cipher_type_plausible(t, sample)) {
+            printf("  SKIP  type %2d  %-38s (ciphertext not of this form)\n", t, name);
+            n_skipped++;
+            continue;
+        }
+
+        printf("\n\n#################### -type %d  (%s) ####################\n", t, name);
+        fflush(stdout);
+
+        char numbuf[16];
+        snprintf(numbuf, sizeof numbuf, "%d", t);
+        child_argv[type_slot] = numbuf;
+
+        int pipefd[2];
+        if (pipe(pipefd) != 0) { perror("pipe"); continue; }
+        pid_t pid = fork();
+        if (pid < 0) { perror("fork"); close(pipefd[0]); close(pipefd[1]); continue; }
+        if (pid == 0) {
+            // Child: send stdout+stderr up the pipe, then become the concrete solve.
+            dup2(pipefd[1], STDOUT_FILENO);
+            dup2(pipefd[1], STDERR_FILENO);
+            close(pipefd[0]);
+            close(pipefd[1]);
+            execvp(argv[0], child_argv);
+            _exit(127);   // exec failed
+        }
+
+        // Parent: tee the child's output through, capturing its best ">>>" score.
+        close(pipefd[1]);
+        FILE *cout = fdopen(pipefd[0], "r");
+        double best = 0.0; bool got = false;
+        if (cout) {
+            char line[MAX_CIPHER_LENGTH];
+            while (fgets(line, sizeof line, cout)) {
+                fputs(line, stdout);
+                if (strncmp(line, ">>> ", 4) == 0) {
+                    double sc;
+                    if (sscanf(line + 4, "%lf", &sc) == 1 && (!got || sc > best)) {
+                        best = sc; got = true;
+                    }
+                }
+            }
+            fclose(cout);
+        }
+        int status;
+        waitpid(pid, &status, 0);
+
+        board[nboard].type = t;
+        board[nboard].score = got ? best : -1e30;
+        board[nboard].ran = got;
+        nboard++;
+        n_run++;
+    }
+    free(child_argv);
+
+    // Leaderboard, best score first.
+    printf("\n\n=== -type all leaderboard  (%d run, %d skipped) ===\n", n_run, n_skipped);
+    printf("NOTE: scores are NOT directly comparable across types with different\n");
+    printf("      alphabets (25/26/27/36 symbols) or -logprob settings -- use as a\n");
+    printf("      rough guide and read the decrypts of the top few candidates.\n\n");
+    for (int a = 0; a < nboard; a++) {
+        int bi = a;
+        for (int b = a + 1; b < nboard; b++)
+            if (board[b].score > board[bi].score) bi = b;
+        if (bi != a) {
+            SweepResult tmp = board[a]; board[a] = board[bi]; board[bi] = tmp;
+        }
+        if (board[a].ran)
+            printf("  %8.2f   type %2d   %s\n",
+                   board[a].score, board[a].type, cipher_type_name(board[a].type));
+        else
+            printf("     (no score)   type %2d   %s\n",
+                   board[a].type, cipher_type_name(board[a].type));
+    }
+    printf("\n");
+    return 1;
+}
+
 int main(int argc, char **argv) {
     ColossusConfig cfg;
     SharedData shared;
@@ -365,6 +568,16 @@ int main(int argc, char **argv) {
     // A -seed <uint> argument (parsed below) overrides this for reproducible runs.
     uint32_t rng_seed = (uint32_t)time(NULL);
     seed_rand(rng_seed);
+
+    // "-type all": sweep every plausible cipher type in a subprocess each (each type
+    // needs its own alphabet / n-gram setup, so a fresh process per type is the clean
+    // way). Detected here so the normal single-type setup below is skipped entirely.
+    for (i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-type") == 0 && i + 1 < argc &&
+            parse_cipher_type(argv[i + 1]) == TYPE_ALL) {
+            return run_all_types(argc, argv) ? 0 : 1;
+        }
+    }
 
     init_config(&cfg);
 

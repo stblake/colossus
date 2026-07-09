@@ -94,6 +94,9 @@
 #define MORBIT             75  // Morbit: Morse taken in PAIRS over a pair<->digit map; deterministic exhaustive (9!)
 #define STRADDLING_CHECKERBOARD 76  // Straddling Checkerboard: keyed-board digit fractionation (keyed labels + figure-shift)
 
+#define N_CIPHER_TYPES     77   // number of real cipher-type codes (0..76 inclusive)
+#define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
+
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 
 // Progressive Key base type (which periodic cipher both the keyword and the
@@ -1109,6 +1112,9 @@ static inline uint32_t fast_rand_bounded(uint32_t range);
 int gcd(int a, int b);
 int str_eq(const char *a, const char *b);
 int parse_cipher_type(const char *arg);
+// Short human-readable name for a cipher-type code (0..76). Returns NULL for a code
+// that is not a real cipher type. Used by the "-type all" sweep report.
+const char *cipher_type_name(int type);
 int unique_len(char *str);
 void vec_print(int vec[], int len);
 void print_text(int indices[], int len);
