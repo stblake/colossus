@@ -252,6 +252,7 @@
 #include "pollux_solver.h"
 #include "morbit_solver.h"
 #include "straddling_checkerboard_solver.h"
+#include "ragbaby_solver.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
 
@@ -687,7 +688,7 @@ static void print_help(const char *prog) {
 
     printf("CIPHER TYPES  (-type accepts the integer code or any listed alias)\n");
     printf("  code  name                                aliases\n");
-    for (int t = 0; t <= STRADDLING_CHECKERBOARD; t++) {
+    for (int t = 0; t <= RAGBABY; t++) {
         const char *name = cipher_type_name(t);
         if (name)
             printf("  %3d   %-35s %s\n", t, name, cipher_type_aliases(t));
@@ -1288,6 +1289,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Morbit cipher (Morse taken in pairs over a pair <-> digit map; deterministic exhaustive 9! search).\n\n");
     } else if (cfg.cipher_type == STRADDLING_CHECKERBOARD) {
         printf("\nAttacking a Straddling Checkerboard cipher (keyed-board digit fractionation; keyed labels + figure-shift).\n\n");
+    } else if (cfg.cipher_type == RAGBABY) {
+        printf("\nAttacking a Ragbaby cipher (keyed 24-letter alphabet; per-letter shift = word-position number mod 24).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1441,6 +1444,14 @@ int main(int argc, char **argv) {
             g_alpha, g_idx_to_char_arr);
     }
 
+    // Ragbaby runs on a 24-letter keyed alphabet (A..Z minus J,X; I/J and W/X paired). Force it
+    // here -- before load_ngrams -- unless the user already changed the alphabet.
+    if (cfg.cipher_type == RAGBABY && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet_ragbaby();
+        printf("-type ragbaby: alphabet forced to %d letters (J->I, X->W): %s\n",
+            g_alpha, g_idx_to_char_arr);
+    }
+
     // --- Resource Loading ---
 
     shared.ngram_data = load_ngrams(cfg.ngram_file, cfg.ngram_size, cfg.verbose);
@@ -1560,7 +1571,8 @@ int main(int argc, char **argv) {
                                  (t >= TRANSCOL_L && t <= TRANSTILE) ||
                                  (t == PERIOD_COLUMN) ||
                                  (t == PERIOD_COLUMN_SPACE) ||
-                                 (t == TRANSCOL2_DC);
+                                 (t == TRANSCOL2_DC) ||
+                                 (t == RAGBABY);   // word divisions drive the per-letter numbering
         if (!space_significant)
             while (ci > 0 && isspace((unsigned char) single_ciphertext_buffer[ci - 1]))
                 single_ciphertext_buffer[--ci] = '\0';
@@ -1697,6 +1709,12 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     }
     if (cfg->cipher_type == STRADDLING_CHECKERBOARD) {
         solve_straddling_checkerboard(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == RAGBABY) {
+        // Parses the spaced ciphertext_str directly (word divisions drive the per-letter numbering).
+        solve_ragbaby(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

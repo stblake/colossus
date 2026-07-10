@@ -241,6 +241,14 @@ src/polygraphic/      # square/cube/matrix ciphers — each: primitive + a Ciphe
 
 src/substitution/     # monoalphabetic / homophonic substitution solvers
   indep_solver.c/.h homophonic_solver.c/.h   # each: a CipherModel + solve_<type>()
+  ragbaby.c ragbaby_solver.c/.h  # Ragbaby: keyed 24-letter alphabet (I/J, W/X paired) in which each
+                                 #   plaintext letter is shifted forward by its WORD-POSITION number
+                                 #   (word 1's first letter=1, word 2's first=2, ...; +1 within a word;
+                                 #   mod 24). The numbering is FIXED by the (spaced) ciphertext, so the
+                                 #   only unknown is the keyed alphabet -- a keyed-alphabet anneal
+                                 #   (keyword+ordered tail, the 24-cell ragbaby_move_seq twin of
+                                 #   fracmorse). solve_ragbaby() parses ciphertext_str directly (word
+                                 #   divisions matter). Own CipherModel; no period; reward-only quadgrams.
 
 makefile
 README.md  LICENSE
@@ -274,6 +282,7 @@ tools/pollux_gen.c           # standalone Pollux generator (make pollux_gen; ass
 tools/morbit_gen.c           # standalone Morbit generator (make morbit_gen; 9-letter keyword)
 tools/straddling_checkerboard_gen.c # standalone Straddling Checkerboard generator (make straddling_checkerboard_gen; keyword, label key or -, two blank columns; carries digits)
 tools/double_transposition_gen.c # standalone double columnar transposition generator (make double_transposition_gen)
+tools/ragbaby_gen.c          # standalone Ragbaby generator (make ragbaby_gen; plaintext + keyword; keeps word divisions, folds J->I / X->W)
 english_quadgrams.txt        # n-gram table (quadgrams); english_quintgrams.txt (5-grams) optional, with -logprob
 OxfordEnglishWords.txt       # default dictionary (auto-loaded if present in cwd)
 ciphers/kryptos/     # K1–K4 ciphertexts + run scripts
@@ -470,7 +479,13 @@ that enciphers `ONCE UPON A TIME` with the word spaces and reproduces the exact 
 (exercising the `xx` word divider AND the odd-length trailing-`x` pad), encode→decode round-trips ==
 identity over random pair↔digit bijections × plaintexts × lengths, an explicit odd-length-pad
 single-letter case, and the edge paths — an illegal `xxx` run flagged invalid, a codeword > 4 symbols →
-filler, and a non-bijection key rejected by encode).
+filler, and a non-bijection key rejected by encode), and
+`tests/test_ragbaby.c` (the Ragbaby primitives: the ACA worked-example known-answer vector — keyword
+`GROSBEAK` → KA `GROSBEAKCDFHILMNPQTUVWYZ`, `word divisions are kept` → `YBBL HNGQDUFGL DEF HFYR` (the
+build, the word-position numbering `1 2 3 4 | 2 3 4 5 6 7 8 9 10 | 3 4 5 | 4 5 6 7`, and the mod-24
+forward shift verified cell for cell), decrypt inverting encrypt on the KAT, encrypt↔decrypt round-trips
+== identity over random keyed alphabets × random word-divided plaintexts, the mod-24 wrap (number 24≡0,
+25≡1; a shift of 24 == no move), and the I/J-W/X pairing — plaintext J folds to I and X to W).
 `make testopt` additionally runs the in-process solver regressions
 `tests/test_solver.c` (polyalphabetic), `tests/test_playfair_solver.c` (Playfair:
 validates the per-type schedule registry, asserts an 800-char capability floor, and
@@ -622,13 +637,20 @@ at 20, 100% from 24 — below the ACA 50-75 band); a validity-weight sweep in th
 the reward is essential there (weight 0 → 0% vs weight 3 → ~44% at 16 letters); a reward-only-vs-`-logprob`
 characterization (reward-only wins; `-logprob` collapses short text 90% → 0% at L=20); and determinism.
 Deterministic-exhaustive (9! Heap's enumeration), so the sweeps CALIBRATE the single knob,
-`MORBIT_VALID_WEIGHT`; ~24s).
+`MORBIT_VALID_WEIGHT`; ~24s), and
+`tests/test_ragbaby_solver.c` (Ragbaby: registry validation (`16x120000`) + a non-registry type left
+untouched; the keyed-alphabet move INVARIANT (`ragbaby_move_seq` keeps a permutation + sorted tail over
+long move chains); a capability floor across keywords at ~150 chars (recovers ~100% through the registry
+schedule); a length cliff (~80/150/300, strong from ~110); a multi-keyword sweep (mean/worst, with a
+documented short-text near-miss basin at a fixed seed — the true KA still scores highest); and per-scheme
+calibration under `-method anneal/shotgun/pso` (only anneal asserted). Reward-only quadgrams (no
+`-logprob`): the known per-letter shift constrains the KA so the true alphabet scores highest; ~30s).
 `ciphers/tests/` additionally holds
 end-to-end cases (ciphertext + `*_solution.txt`, plus `*_solve.sh` runners — e.g. the
 `transcol_*_solve.sh` columnar recovery tests and `playfair_solve.sh`) you can run by hand.
 
 `ciphers/tests/run_tests.sh` is the **accuracy regression suite**: a manifest of
-76 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
+77 end-to-end cases (Vigenère, Gronsfeld, Beaufort, Porta, Quagmire I–IV, autokey, the ACA
 `q*_p1xx` puzzles, pure-transposition types, a homophonic substitution, a Playfair
 cipher, a Bifid cipher, a Trifid cipher, a Hill cipher, the three Phillips
 variants — Row / Column / Row-Column — a Two-Square (horizontal + vertical), a
@@ -652,8 +674,10 @@ all period pinned), a Fractionated Morse cipher (`fracmorse_pride`, keyed-alphab
 composition solved deterministically, `-depth 2`), a Pollux cipher (`pollux_pp`, a ~90-letter digit
 cipher solved by the deterministic exhaustive 3^10 search, no budget args), a Morbit cipher
 (`morbit_pp`, a ~90-letter digit cipher solved by the deterministic exhaustive 9! search, no budget
-args), and a Straddling Checkerboard cipher (`straddling_pp`, a ~207-letter digit cipher solved via the
-per-config SA mini-solve pre-pass + warm anneal over the free code→cell substitution, `-logprob`)) that each
+args), a Straddling Checkerboard cipher (`straddling_pp`, a ~207-letter digit cipher solved via the
+per-config SA mini-solve pre-pass + warm anneal over the free code→cell substitution, `-logprob`), and a
+Ragbaby cipher (`ragbaby_pp`, a ~113-letter spaced cipher solved by the keyed-alphabet anneal, reward-only,
+`-nrestarts 12 -nhillclimbs 60000`)) that each
 solve to ~100% with a **fixed `-seed`** and quadgrams. It runs the solver, pulls the
 recovered plaintext from the last field of the `>>>` CSV line, compares it
 character-for-character to a sibling `<name>.solution` (bare A–Z plaintext), and prints
@@ -663,10 +687,10 @@ bit-identical refactor keeps every score at 100% and any behavioural regression 
 immediately. Each test's `-nrestarts`/`-nhillclimbs` are trimmed to the smallest that
 still lands on the solution at the seed, so the full run is ~2 min (was ~45 before
 trimming). The manifest tags each case `fast` or `slow`:
-`./run_tests.sh --fast` runs the 39-case fast tier in ~63s (use while iterating; incl. the three
+`./run_tests.sh --fast` runs the 40-case fast tier in ~64s (use while iterating; incl. the three
 ~0s Progressive Key bases, the three ~0s Slidefair bases, the five ~1s Interrupted Key cases, the
-~2s deterministic Period column order case, and the ~0s deterministic Pollux + ~1s deterministic Morbit
-cases),
+~2s deterministic Period column order case, the ~0s deterministic Pollux + ~1s deterministic Morbit
+cases, and the ~1s Ragbaby solve),
 `--slow` the 32 heavier ciphers (incl. the ~24s Playfair, ~6s Bifid, ~18s Trifid, the
 three ~13s Phillips solves, the two ~10s Two-Square solves, the ~17s Four-Square, the ~20s Tri-Square, the
 ~10s ADFGX, the four ~6–8s Nihilist Substitution solves, the three ~1s Nicodemus
@@ -717,7 +741,8 @@ Required flags: `-type`, a cipher source (`-cipher <file>` or `-batch <file>`),
 `transcol2-dc`/`transcol2dc`/`dctrans`/`doublecol-dc`/`dcol`/`73`,
 `pollux`/`pol`/`74`,
 `morbit`/`mor`/`75`,
-`straddling-checkerboard`/`straddling`/`straddle`/`strad`/`sc`/`76`
+`straddling-checkerboard`/`straddling`/`straddle`/`strad`/`sc`/`76`,
+`ragbaby`/`rag`/`77`
 (full list in `parse.c`; codes in `colossus.h`). Output is a human-readable block followed by a
 `>>> ...` one-line CSV summary that batch runs grep/sort.
 
@@ -1477,6 +1502,44 @@ KAT, a keyed-label KAT, a figure-shift round-trip, heavy random round-trip stres
 `tests/test_straddling_checkerboard_solver.c`; `ciphers/tests/run_tests.sh` carries `straddling_pp` (a
 ~207-letter cipher, slow tier, `-logprob`, ~100%).
 
+The **Ragbaby** type (`ragbaby`/`rag`/`77`; `solve_ragbaby()`, `RAGBABY_MODEL`, `SHAPE_ANNEAL`) is the
+ACA **"Ragbaby"** — a substitution over a **keyed 24-letter alphabet** in which each plaintext LETTER is
+shifted **forward by its word-position number** (mod 24). The ACA alphabet is 24 letters with **I/J and
+W/X paired** (plaintext J→I, X→W), so `init_alphabet_ragbaby()` is forced before `load_ngrams` (it calls
+`init_alphabet("JX")` then re-registers J→I's / X→W's index — the one initializer that PAIRS dropped
+letters rather than leaving them at −1). **Numbering:** number each letter; word 1's first letter = 1,
+word 2's first = 2, … (the per-word start increments by one), +1 within a word, running 1..24 and
+repeating (25≡1) — so the shift for the j-th letter (0-indexed) of the w-th word (w from 1) is
+`(w+j) mod 24`. **Word divisions (spaces) are structural** (a hyphen/apostrophe keeps a word single; any
+non-letter passes through, not numbered), so `RAGBABY` is in the **space-significant** set and
+`solve_ragbaby()` parses `ciphertext_str` directly (like the digit-stream solvers) to derive the LETTER
+stream + per-letter numbers, rather than the A..Z decode. **Encipher** moves right in the KA
+(`CT = KA[(idx_KA(pt)+num) mod 24]`), **decipher** left; the primitive (`ragbaby.c`, hand-verified
+cell-for-cell against the ACA worked example — keyword `GROSBEAK` → KA `GROSBEAKCDFHILMNPQTUVWYZ`,
+`word divisions are kept` → `YBBL HNGQDUFGL DEF HFYR`) is generic in `alpha`. **The ONLY unknown is the
+keyed alphabet** (the numbering is fixed by the ciphertext), and it is an ACA KEYED alphabet, searched
+**as such** — the state is a keyed-alphabet SEQUENCE (KA = `st->key[0..23]`, "keyword prefix of length kw
++ ascending tail") perturbed by `ragbaby_move_seq`, the **24-cell twin of `fracmorse_move_seq`** (~4%
+grow/shrink kw, ~48% keyword↔tail swap, ~48% in-keyword reorder; kw in `st->aux[0]`, sampled per restart
+from [3..12]). Because the per-letter shift is KNOWN the KA is heavily constrained, so — unlike the square
+types — Ragbaby **rides the reward-only quadgram table (no `-logprob`)**, like the Vigenère/Porta family
+(the true KA scores highest), and **recovers reliably across the ACA ~100-150-letter range**; at the very
+short (~80) end recovery is seed-sensitive (a keyed-alphabet cliff, like every alphabet solver — the true
+KA still scores highest, so more restarts / a lucky seed recover it). `score_adjust` stays 0 (every KA is
+a bijection); the KA is recoverable only up to a cyclic rotation (à la Playfair), but the plaintext is
+unique. **Cribs are NOT used** (the letters-only / spaced positional mapping is fragile; Ragbaby is not
+crib-driven). There is **no period** (a single engine config). Its registry schedule is the same lean
+keyed-alphabet profile as Fractionated Morse — `SHAPE_ANNEAL`, **`16x120000`** at **`inittemp 0.30`**,
+`backtrack 0.30` (RESTARTS are the lever). Because the model implements `seed`/`perturb`/`copy`, `-method
+anneal|shotgun|pso` all run on it. Generate test ciphers with `tools/ragbaby_gen.c` (`make ragbaby_gen`;
+args are a plaintext and a keyword; it keeps word divisions and folds J→I / X→W). Unit tests:
+`tests/test_ragbaby.c` (primitive — the ACA KAT, the numbering rule, encrypt↔decrypt round-trips over
+random keyed alphabets × word-divided plaintexts, the mod-24 wrap, and the I/J-W/X folding) and
+`tests/test_ragbaby_solver.c` (registry validation, the keyed-alphabet move INVARIANT, a capability floor
++ length cliff across the ACA range, a multi-keyword sweep, and per-scheme calibration);
+`ciphers/tests/run_tests.sh` carries `ragbaby_pp` (a ~113-letter spaced cipher, fast tier, reward-only,
+~100%).
+
 The **Period column order** type (`period-column`/`periodcol`/`pcol`/`transpercol`/`71`;
 `solve_period_column()` + `period_column_search()` in `period_column_solver.c`) is AZdecrypt's
 **"Period column order"** transposition — a **columnar transposition whose column permutation is fixed
@@ -1858,7 +1921,11 @@ basin, so no local-search budget cracks it blind; the entry is a bounded honest 
 target), and Fractionated Morse (`SHAPE_ANNEAL`, **`16x120000`**, **`inittemp 0.30`**, `backtrack 0.30` — the
 single KEYED-alphabet anneal (keyword + tail, `fracmorse_move_seq`, not a free permutation); like Digrafid the
 coarse keyword moves want a WARM temperature and RESTARTS are the lever, but there is NO period so the budget
-is a single config, not multiplied by a sweep. Tuned against `test_fracmorse_solver`).
+is a single config, not multiplied by a sweep. Tuned against `test_fracmorse_solver`), and Ragbaby
+(`SHAPE_ANNEAL`, **`16x120000`**, **`inittemp 0.30`**, `backtrack 0.30` — the same lean keyed-alphabet profile
+as Fractionated Morse: a single KEYED-24-letter-alphabet anneal (`ragbaby_move_seq`, keyword + ordered tail),
+NO period, RESTARTS the lever; the known per-letter shift heavily constrains the KA so it rides the
+reward-only quadgram table. Tuned against `test_ragbaby_solver`).
 This is the mechanism for moving the magic
 per-type budgets out of the run scripts and into the binary; add tuned entries for other
 types incrementally. The registry is validated end-to-end in `tests/test_playfair_solver.c`.

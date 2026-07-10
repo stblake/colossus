@@ -105,8 +105,9 @@ typedef struct CribDrag {
 #define POLLUX             74  // Pollux: Morse over a digit->{dot,dash,x} map; deterministic exhaustive (3^10)
 #define MORBIT             75  // Morbit: Morse taken in PAIRS over a pair<->digit map; deterministic exhaustive (9!)
 #define STRADDLING_CHECKERBOARD 76  // Straddling Checkerboard: keyed-board digit fractionation (keyed labels + figure-shift)
+#define RAGBABY            77  // Ragbaby: keyed 24-letter alphabet, per-letter shift = word-position number (mod 24)
 
-#define N_CIPHER_TYPES     77   // number of real cipher-type codes (0..76 inclusive)
+#define N_CIPHER_TYPES     78   // number of real cipher-type codes (0..77 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
@@ -1188,6 +1189,33 @@ void init_alphabet_adfgvx(void);
 // registers the non-letter in g_char_to_idx (so '#' decodes from the ciphertext) and gives
 // it a negligible English monogram weight (the grid attack uses no monogram penalty).
 void init_alphabet_digrafid(void);
+// Build the 24-symbol Ragbaby alphabet: A..Z minus J and X, with the two DROPPED letters
+// re-registered as PAIRS (J -> I's index, X -> W's index) so a plaintext/ciphertext J or X
+// still decodes (the ACA Ragbaby convention pairs I/J and W/X). g_alpha becomes 24.
+void init_alphabet_ragbaby(void);
+
+// --- Ragbaby primitives (ragbaby.c) --------------------------------------------------
+// A Ragbaby enciphers each plaintext LETTER by shifting it `num` places forward in a keyed
+// alphabet KA (mod `alpha`), where `num` is the letter's word-position number (word 1's first
+// letter = 1, word 2's first = 2, ...; +1 within a word; mod alpha). Spaces/non-letters pass
+// through unchanged and are not numbered. The math below works on already-parsed LETTER streams
+// + a parallel per-letter `num[]`; ragbaby_number_stream() derives both from a spaced string.
+//
+// Build a keyed alphabet into ka[0..alpha-1]: the keyword letters (as alphabet indices, dropping
+// duplicates and any index >= alpha) followed by the remaining indices ascending.
+void ragbaby_build_keyed_alphabet(int ka[], const char *keyword, int alpha);
+// Parse a spaced string: fill letters[] (alphabet indices of the letters only) and num[] (each
+// letter's shift = (word_index + within_word_pos) mod alpha, word_index starting at 1); *out_len
+// gets the letter count. Non-letters (spaces/punctuation) delimit words (whitespace) or pass
+// through within a word (else); only letters are numbered. Chars are folded through g_char_to_idx.
+void ragbaby_number_stream(const char *str, int alpha, int letters[], int num[], int *out_len);
+// Encrypt/decrypt a LETTER stream (in[0..len-1], alphabet indices) under keyed alphabet ka + its
+// inverse ka_inv (ka_inv[ka[p]] = p), using the per-letter shifts num[]. Encrypt moves right,
+// decrypt moves left, both mod alpha. out[] may alias in[].
+void ragbaby_encrypt(const int in[], const int num[], int len, const int ka[], const int ka_inv[],
+                     int alpha, int out[]);
+void ragbaby_decrypt(const int in[], const int num[], int len, const int ka[], const int ka_inv[],
+                     int alpha, int out[]);
 
 static inline int index_to_char(int idx) {
     return (idx >= 0) ? (unsigned char) g_idx_to_char_arr[idx] : (-(idx + 1));

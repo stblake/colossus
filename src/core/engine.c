@@ -898,6 +898,16 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 30, .s_n_hill_climbs = 40000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Ragbaby: a single keyed-alphabet anneal (24-letter KA; keyword prefix + ordered tail, the
+    // ragbaby_move_seq twin of fracmorse). The per-letter shift is KNOWN, so the KA is heavily
+    // constrained -- the coarse keyword moves want a warm temperature and RESTARTS are the lever
+    // (no period, a single config). Same profile as Fractionated Morse; tuned vs the solver test.
+    { .cipher_type = RAGBABY, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 16, .a_n_hill_climbs = 120000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 120, .s_n_hill_climbs = 120000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 
 bool apply_cipher_defaults(ColossusConfig *cfg, bool announce) {

@@ -267,6 +267,10 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "straddle") || str_eq(arg, "strad") || str_eq(arg, "sc"))
         return STRADDLING_CHECKERBOARD;
 
+    // Ragbaby (keyed 24-letter alphabet; per-letter shift = word-position number mod 24).
+    if (str_eq(arg, "ragbaby") || str_eq(arg, "rag"))
+        return RAGBABY;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -354,6 +358,7 @@ const char *cipher_type_name(int type) {
         case POLLUX:                  return "Pollux";
         case MORBIT:                  return "Morbit";
         case STRADDLING_CHECKERBOARD: return "Straddling Checkerboard";
+        case RAGBABY:                 return "Ragbaby";
         default:                      return NULL;
     }
 }
@@ -443,6 +448,7 @@ const char *cipher_type_aliases(int type) {
         case POLLUX:                  return "pollux, pol";
         case MORBIT:                  return "morbit, mor";
         case STRADDLING_CHECKERBOARD: return "straddling-checkerboard, straddling, straddle, strad, sc";
+        case RAGBABY:                 return "ragbaby, rag";
         default:                      return NULL;
     }
 }

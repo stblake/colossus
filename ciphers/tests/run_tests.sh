@@ -222,6 +222,11 @@ fast | morbit_pp           | morbit        | morbit_pp.txt           |
 # the free code->cell substitution. Needs -logprob. Letters (incl. keyed labels) recover
 # robustly; numeric/figure-shift is a documented limitation (see tests/test_straddling*.c).
 slow | straddling_pp       | sc            | straddling_pp.txt       | -logprob
+# Ragbaby (keyed 24-letter alphabet; per-letter shift = word-position number mod 24). A ~113-letter
+# spaced cipher (keyword CRYPTOGRAM) recovered by the keyed-alphabet anneal; the known per-letter
+# shift makes it ride the reward-only quadgram table (no -logprob). Word divisions drive the
+# numbering, so the cipher keeps its spaces. See tests/test_ragbaby*.c.
+fast | ragbaby_pp          | ragbaby       | ragbaby_pp.txt          | -nrestarts 12 -nhillclimbs 60000
 EOF
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }

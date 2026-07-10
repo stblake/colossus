@@ -96,6 +96,14 @@ void init_alphabet_digrafid(void) {
     g_alpha = pos + 1;                                    // 27
 }
 
+void init_alphabet_ragbaby(void) {
+    init_alphabet("JX");                                  // 24 letters: A..Z minus J and X
+    // Re-register the two dropped letters as PAIRS so a plaintext/ciphertext J or X still
+    // decodes (ACA Ragbaby pairs I/J and W/X). init_alphabet left both at -1.
+    g_char_to_idx[(int) 'J'] = g_char_to_idx[(int) 'I'];
+    g_char_to_idx[(int) 'X'] = g_char_to_idx[(int) 'W'];
+}
+
 int gcd(int a, int b) {
     while (b) { a %= b; int t = a; a = b; b = t; }
     return a;
