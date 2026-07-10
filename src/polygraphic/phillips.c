@@ -37,8 +37,8 @@
 
 // Per-call scratch for the nsq derived squares and their inverse (letter -> cell) maps.
 // Kept file-static so the per-iteration decrypt hook does not carry a large frame.
-static int g_phil_squares[PHILLIPS_MAX_SQUARES * PHILLIPS_MAX_GRID];
-static int g_phil_pos[PHILLIPS_MAX_SQUARES * PHILLIPS_MAX_GRID];
+static _Thread_local int g_phil_squares[PHILLIPS_MAX_SQUARES * PHILLIPS_MAX_GRID];
+static _Thread_local int g_phil_pos[PHILLIPS_MAX_SQUARES * PHILLIPS_MAX_GRID];
 
 // Fill order[s*side + pos] with the row/col reinsertion sequence shared by ROW and COL
 // (and reused by ROWCOL): the index of the base row/column placed at position `pos` of

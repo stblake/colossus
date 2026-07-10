@@ -25,7 +25,7 @@
 // Single-threaded scratch for the interleaved coordinate stream of the current block
 // (length 2*L <= 2*period <= 2*MAX_CIPHER_LENGTH). Kept off the stack so the per-
 // iteration decrypt hook does not carry an 80KB frame.
-static int g_bifid_stream[2 * MAX_CIPHER_LENGTH];
+static _Thread_local int g_bifid_stream[2 * MAX_CIPHER_LENGTH];
 
 // Build pos[] (letter -> cell) from grid[] (cell -> letter); n = side*side cells.
 void bifid_build_inverse(const int grid[], int pos[], int n) {

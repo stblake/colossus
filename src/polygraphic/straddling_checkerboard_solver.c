@@ -7,8 +7,8 @@
 // =====================================================================
 
 // Decoded-plaintext + tiled scratch (single-threaded), off the stack.
-static int g_sc_decode[MAX_CIPHER_LENGTH];
-static int g_sc_tiled[MAX_CIPHER_LENGTH];
+static _Thread_local int g_sc_decode[MAX_CIPHER_LENGTH];
+static _Thread_local int g_sc_tiled[MAX_CIPHER_LENGTH];
 // Parsed ciphertext digit stream, filled by solve_straddling_checkerboard.
 static int g_sc_digits[MAX_CIPHER_LENGTH];
 

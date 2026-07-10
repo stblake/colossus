@@ -30,7 +30,7 @@
 // Single-threaded scratch for the interleaved coordinate stream of the current block
 // (length 2*L <= 2*period <= 2*MAX_CIPHER_LENGTH). Kept off the stack so the per-
 // iteration decrypt hook does not carry an 80KB frame.
-static int g_cm_bifid_stream[2 * MAX_CIPHER_LENGTH];
+static _Thread_local int g_cm_bifid_stream[2 * MAX_CIPHER_LENGTH];
 
 // Encipher plaintext (any length): fractionate with sq1, recombine the pairs through sq2.
 void cm_bifid_encrypt(const int plain[], int len, const int sq1[], const int sq2[],

@@ -43,7 +43,7 @@
 
 // Decoded-plaintext scratch (single-threaded), off the stack. A decode yields at most ~3C/2
 // tokens (every token one symbol), so 2*MAX_CIPHER_LENGTH is a safe bound for C <= MAX.
-static int g_fm_decode[2 * MAX_CIPHER_LENGTH];
+static _Thread_local int g_fm_decode[2 * MAX_CIPHER_LENGTH];
 
 // ===================================================================
 //  Keyed-alphabet move (length-26 twin of digrafid_move_seq / _canonicalize)

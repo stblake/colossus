@@ -67,8 +67,8 @@ static int    g_ik_mask_scratch[MAX_CIPHER_LENGTH];
 static double g_ik_colscore[MAX_CYCLEWORD_LEN * ALPHABET_SIZE];
 
 // CT-strategy break-mask cache for the decrypt hot path (rebuilt when the config index changes).
-static int g_ik_maskcache[MAX_CIPHER_LENGTH];
-static int g_ik_maskcache_cfg = -1;
+static _Thread_local int g_ik_maskcache[MAX_CIPHER_LENGTH];
+static _Thread_local int g_ik_maskcache_cfg = -1;
 
 // ===================================================================
 //  Column fit + strategy-specific key-index derivation

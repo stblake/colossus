@@ -291,7 +291,8 @@ typedef struct {
     int ngram_size;
     int n_hill_climbs;
     int n_restarts;
-    
+    int n_threads;      // worker threads splitting the restart loop (>=1; 1 == sequential)
+
     // Keyword/Cycleword constraints
     int plaintext_keyword_len;
     int ciphertext_keyword_len;
@@ -1227,7 +1228,21 @@ bool file_exists(const char * filename);
 void vec_copy(int src[], int dest[], int len);
 int int_pow(int base, int exp);
 
-extern uint32_t rng_state;
+// Thread-local so parallel restart workers (-nthreads > 1) each draw from an
+// independent stream. Seeded per worker via rng_seed_thread(); the main thread keeps
+// whatever seed_rand() set, so the single-thread path is bit-identical to before.
+extern _Thread_local uint32_t rng_state;
+
+// Deterministically derive a worker's seed from the base seed and its thread index
+// (splitmix32 mix), so a given (-seed, -nthreads) reproduces the same per-worker
+// streams. Never returns 0 (an xorshift state of 0 is a fixed point).
+static inline uint32_t rng_seed_thread(uint32_t base, int tid) {
+    uint32_t z = base + 1u + (uint32_t)tid * 0x9E3779B9u;
+    z = (z ^ (z >> 16)) * 0x85EBCA6Bu;
+    z = (z ^ (z >> 13)) * 0xC2B2AE35u;
+    z ^= z >> 16;
+    return z ? z : 1u;
+}
 
 // Fast inline Xorshift32 generator
 static inline uint32_t fast_rand(void) {

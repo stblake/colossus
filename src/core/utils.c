@@ -4,7 +4,7 @@
 
 #include "colossus.h"
 
-uint32_t rng_state = 123456789;
+_Thread_local uint32_t rng_state = 123456789;
 
 // --- Runtime alphabet (see colossus.h). Defaults to the full A..Z so the
 // historical 26-letter behaviour is bit-identical until -excludeletter/-alphabet

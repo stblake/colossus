@@ -48,8 +48,8 @@ static int g_gm_primers[GM_TOPK_MAX * GROMARK_MAX_PRIMER];
 static int g_gm_warm[GM_TOPK_MAX * GM_SIGMA];
 
 // Running-key cache for the current config (rebuilt when the config index changes).
-static int g_gm_chain[MAX_CIPHER_LENGTH];
-static int g_gm_chain_cfg = -1;
+static _Thread_local int g_gm_chain[MAX_CIPHER_LENGTH];
+static _Thread_local int g_gm_chain_cfg = -1;
 
 // ===================================================================
 //  Pre-pass: rank primers by an assignment-based frequency attack
@@ -143,7 +143,7 @@ static void gm_topk_consider(GmTopK *t, double score, int P,
 // writes the provisional sigma. (Periodic Gromark does NOT use this -- it anneals the keyword.)
 static double gm_eval_primer(const int cipher[], int n, int P, const int primer[],
                              const float *ngram, int ngram_size, int sigma_out[]) {
-    static int d[MAX_CIPHER_LENGTH];
+    static _Thread_local int d[MAX_CIPHER_LENGTH];
     gromark_chain_key(primer, P, n, d);
 
     // gain[c][u] = sum over positions with cipher==c of logmono[(u - d[i]) mod 26].
@@ -429,7 +429,7 @@ static void gmkw_decrypt_hook(const SolverCtx *ctx, const SolverConfig *cc,
     (void) cc;
     int P = st->aux[0], n = ctx->cipher_len;
     int sigma[GM_SIGMA], sinv[GM_SIGMA], primer[GROMARK_MAX_PRIMER], offsets[GROMARK_MAX_PRIMER];
-    static int d[MAX_CIPHER_LENGTH];
+    static _Thread_local int d[MAX_CIPHER_LENGTH];
     gromark_build_from_keyword_idx(st->key, P, sigma, primer, offsets);
     for (int i = 0; i < GM_SIGMA; i++) sinv[sigma[i]] = i;
     gromark_chain_key(primer, P, n, d);

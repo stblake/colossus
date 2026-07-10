@@ -115,9 +115,9 @@ void derive_optimal_cycleword(
     // Beaufort/Porta) depends only on (cipher_type, variant); their keywords never
     // change, so it is built once for the whole run and cached. (We still compare
     // the cached keywords so a stray batch run with a different type rebuilds.)
-    static double weight[ALPHABET_SIZE][ALPHABET_SIZE];
-    static int w_valid = 0, w_type = -1, w_variant = -1;
-    static int w_pt[ALPHABET_SIZE], w_ct[ALPHABET_SIZE];
+    static _Thread_local double weight[ALPHABET_SIZE][ALPHABET_SIZE];
+    static _Thread_local int w_valid = 0, w_type = -1, w_variant = -1;
+    static _Thread_local int w_pt[ALPHABET_SIZE], w_ct[ALPHABET_SIZE];
 
     if (!is_quag) {
         int rebuild = !w_valid || w_type != cfg->cipher_type || w_variant != (int)cfg->variant;

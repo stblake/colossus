@@ -46,10 +46,10 @@ static const char *const FM_MORSE[26] = {
 // Forward table: per-letter symbol array (DOT/DASH) + length. Reverse table: a codeword
 // encoded as v = 1, then v = v*2 + (sym==DASH) for each symbol (so v in [2..31] for lengths
 // 1..4, all distinct) maps back to a letter; unused v's are -1 (invalid codeword). Built once.
-static int  g_fm_sym[26][4];
-static int  g_fm_len[26];
-static int  g_fm_rev[32];
-static bool g_fm_init = false;
+static _Thread_local int  g_fm_sym[26][4];
+static _Thread_local int  g_fm_len[26];
+static _Thread_local int  g_fm_rev[32];
+static _Thread_local bool g_fm_init = false;
 
 static void fracmorse_init(void) {
     if (g_fm_init) return;
@@ -71,7 +71,7 @@ static void fracmorse_init(void) {
 // Symbol-stream scratch, kept off the stack (encrypt needs up to ~5 symbols per plaintext
 // letter: <=4 code + 1 separator; decrypt needs exactly 3 per ciphertext letter).
 #define FM_STREAM_MAX (5 * MAX_CIPHER_LENGTH + 8)
-static int g_fm_stream[FM_STREAM_MAX];
+static _Thread_local int g_fm_stream[FM_STREAM_MAX];
 
 // Encipher plaintext (n letters, indices 0..25) under the keyed alphabet sigma (rank -> letter).
 // Writes the ciphertext letters into out[] and returns the ciphertext length C. out[] must hold

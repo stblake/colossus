@@ -1954,6 +1954,36 @@ hooks — none of them know anything about the cipher representation:
   question, not assumed. Because everything is gated behind `-method pso`, the
   `METHOD_DEFAULT` path — and the whole regression suite — stays byte-for-byte identical.
 
+**Restart-loop parallelism (`-nthreads <N>`, default 1).** The engine's **restart loop**
+(the `-nrestarts` shotgun, the robustness lever) is embarrassingly parallel — each restart
+is an independent random climb — so `-nthreads N` runs it across `N` pthreads, **splitting**
+the `-nrestarts` budget contiguously (same total search, ~`N`× faster wall-clock; e.g. a
+6-restart Playfair solve drops from ~27s to ~5s on 6 threads). It is **cipher-agnostic** and
+lives entirely in the engine (`run_one_config` / `run_one_config_pso` and their
+`gen_restart_range` / `pso_restart_range` workers, `engine.c`): each worker runs its slice on
+a **private heap workspace** with a **thread-local RNG** (`rng_state` is now `_Thread_local`,
+seeded per worker by `rng_seed_thread(base, tid)` — a splitmix32 mix off one `fast_rand()`
+draw), and merges into one shared `EngineGlobalBest` under a mutex that ALSO serialises the
+`-verbose` best-improvement logging (so the screen shows monotonic **global** bests with no
+interleaved lines). **`-nthreads 1` spawns no threads and takes the original sequential path
+verbatim (main-thread RNG, file-static buffers, `mtx == NULL`), so every fixed-seed solve is
+bit-identical** (`run_tests.sh --fast` 40/40 100%). For `N>1` the result is deterministic per
+`(seed, N)` modulo global-best tie-break ordering — only `N=1` reproduces the historical
+byte-for-byte output. **Thread-safety:** every hook-reachable static SCRATCH buffer / lazy
+cache written during the search (e.g. `bifid.c`'s `g_bifid_stream`, reused by CM-Bifid /
+ADFGVX / Tri-Square / Digrafid; `phillips.c`'s derived-square scratch; the running-key chains;
+`optimal_cycleword.c`'s per-column weight cache; `scoring.c`'s `letters`/`scale` scratch) was
+made `_Thread_local`; setup-phase statics written once on the main thread before the config
+loop and only READ in the search (period-estimator scratch, primer/pre-pass results, parsed
+digit streams) stay shared, and per-config read-only config in `ctx->model_scratch` is shared
+too. Verified race-free under ThreadSanitizer across the polyalphabetic / square /
+fractionation / Gromark / ADFGX / Fractionated-Morse families. **Exceptions** (both take `N=1`
+regardless of `-nthreads`): the **deterministic-exhaustive** solvers (Period column, Pollux,
+Morbit, …) and the standalone transposition climbers have no engine restart loop; and the
+**incremental** fast-path (its sole user, homophonic) keeps its live neighbour caches in the
+shared `ctx->model_scratch`, a race no thread-local storage fixes, so it is deliberately kept
+single-threaded (documented in `run_one_config_incremental`).
+
 ## How the solver works (mental model)
 
 `solve_cipher()` (in `colossus.c`) is the pipeline:

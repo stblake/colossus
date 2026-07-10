@@ -110,8 +110,8 @@ double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram
     // on EVERY score -- i.e. every hill-climber iteration. Memoize it. pow()
     // returns the identical double for identical args, so the cached value equals
     // the recomputed one bit-for-bit; the score is unchanged.
-    static int cached_ngram_size = -1;
-    static double scale = 0.;
+    static _Thread_local int cached_ngram_size = -1;
+    static _Thread_local double scale = 0.;
     if (ngram_size != cached_ngram_size) {
         // Legacy table entries are ~1/n_ngrams, so the historical g_alpha^ngram_size
         // factor brings the mean back to O(1). The log-prob table already holds O(1)
@@ -136,7 +136,7 @@ double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram
     // which solution wins. When the text is all letters the compaction is the
     // identity, `m == cipher_len`, and every step is bit-for-bit identical to the
     // historical scorer (same indices, same additions, same order, same divisor).
-    static int letters[MAX_CIPHER_LENGTH];
+    static _Thread_local int letters[MAX_CIPHER_LENGTH];
     int m = 0;
     for (int i = 0; i < cipher_len; i++)
         if (decrypted[i] >= 0) letters[m++] = decrypted[i];

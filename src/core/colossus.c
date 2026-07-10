@@ -262,6 +262,7 @@ void init_config(ColossusConfig *cfg) {
     cfg->ngram_size = 0;
     cfg->n_hill_climbs = 1000;
     cfg->n_restarts = 1;
+    cfg->n_threads = 1;
 
     cfg->ciphertext_keyword_len = 5;
     cfg->plaintext_keyword_len = 5;
@@ -628,6 +629,7 @@ static void print_help(const char *prog) {
 "SEARCH CONTROL\n"
 "  -method <m>             shotgun | anneal (sa) | pso.        [per-type default]\n"
 "  -nrestarts <n>          Random restarts (the robustness lever).             [1]\n"
+"  -nthreads <n>           Worker threads; splits -nrestarts across them.      [1]\n"
 "  -nhillclimbs <n>        Iterations per restart.                          [1000]\n"
 "  -inittemp <f>           Annealing start temperature (-initialtemp).      [0.10]\n"
 "  -mintemp <f>            Annealing floor temperature.                    [0.001]\n"
@@ -874,6 +876,10 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-nrestarts") == 0) {
             cfg.n_restarts = atoi(argv[++i]);
             printf("-nrestarts %d\n", cfg.n_restarts);
+        } else if (strcmp(argv[i], "-nthreads") == 0) {
+            cfg.n_threads = atoi(argv[++i]);
+            if (cfg.n_threads < 1) cfg.n_threads = 1;
+            printf("-nthreads %d\n", cfg.n_threads);
         } else if (strcmp(argv[i], "-backtrackprob") == 0) {
             cfg.backtracking_probability = atof(argv[++i]);
             printf("-backtrackprob %.6f\n", cfg.backtracking_probability);

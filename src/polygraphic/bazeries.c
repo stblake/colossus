@@ -12,7 +12,7 @@
 
 // Single-threaded scratch for the transposed/intermediate stream, kept off the stack so the
 // per-iteration solver decrypt hook does not carry a MAX_CIPHER_LENGTH frame (cf. bifid.c).
-static int g_baz_scratch[MAX_CIPHER_LENGTH];
+static _Thread_local int g_baz_scratch[MAX_CIPHER_LENGTH];
 
 // English number-word letters (uppercase; mapped through g_char_to_idx, which folds the
 // active J->I alphabet -- no number word contains J). The transposition uses N's digits,

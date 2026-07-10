@@ -48,7 +48,7 @@ typedef struct {
 } AdfgvxScratch;
 
 // Ciphertext coordinate buffer (single-threaded), filled by solve_adfgvx.
-static int g_adfgvx_coords[MAX_CIPHER_LENGTH];
+static _Thread_local int g_adfgvx_coords[MAX_CIPHER_LENGTH];
 
 // --- neighbour moves --------------------------------------------------------------
 

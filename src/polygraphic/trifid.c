@@ -32,7 +32,7 @@
 // Single-threaded scratch for the interleaved coordinate stream of the current block
 // (length 3*L <= 3*period <= 3*MAX_CIPHER_LENGTH). Kept off the stack so the per-
 // iteration decrypt hook does not carry a 120KB frame.
-static int g_trifid_stream[3 * MAX_CIPHER_LENGTH];
+static _Thread_local int g_trifid_stream[3 * MAX_CIPHER_LENGTH];
 
 // Build pos[] (letter -> cell) from cube[] (cell -> letter); n = side^3 cells.
 void trifid_build_inverse(const int cube[], int pos[], int n) {

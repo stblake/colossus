@@ -1,5 +1,6 @@
 #include "engine.h"
 #include "scoring.h"
+#include <pthread.h>
 
 
 
@@ -37,58 +38,98 @@ static double engine_score(const SolverCtx *ctx, int *decrypted, double adjust) 
         cfg->weight_ngram, cfg->weight_crib, cfg->weight_ioc, cfg->weight_entropy) + adjust;
 }
 
+// =====================================================================
+//  Restart-loop parallelism (-nthreads)
+// =====================================================================
+//
+// Each of the three drivers below (generic / incremental / PSO) splits its restart
+// loop into per-thread "restart ranges", each run on a PRIVATE workspace and a
+// THREAD-LOCAL RNG (rng_state, seeded per worker). The workers merge into one shared
+// EngineGlobalBest under a mutex, which also serialises -verbose best-improvement
+// logging so the lines never interleave and the screen shows monotonic GLOBAL bests.
+//
+// With -nthreads <= 1 no threads are spawned: the driver runs a single restart range
+// on the calling (main) thread, over the file-static workspace, with the main-thread
+// RNG and mtx == NULL -- i.e. the original sequential path, so every fixed-seed solve
+// is bit-identical to before. The -nrestarts budget is SPLIT across the workers (same
+// total search, ~T x faster), each worker taking a contiguous slice.
+
+typedef struct {
+    SolverState state;
+    int decrypted[MAX_CIPHER_LENGTH];
+    double score;
+    bool have;
+} EngineGlobalBest;
+
+// Merge a candidate into the shared global best (serialised when mtx != NULL). Emits
+// the -verbose report ONLY when the candidate improves the global best AND the caller
+// permits it (allow_report is false for PSO's swarm-seed pass, which historically did
+// not log), so the on-screen best sequence is unchanged from the sequential path.
+static void engine_publish_best(const CipherModel *m, SolverCtx *ctx,
+        const SolverConfig *cfg_c, const SolverState *cand, double score,
+        int *decrypted, EngineStats *st, EngineGlobalBest *gb,
+        pthread_mutex_t *mtx, bool verbose, bool allow_report) {
+    if (mtx) pthread_mutex_lock(mtx);
+    if (!gb->have || score > gb->score) {
+        gb->have = true;
+        gb->score = score;
+        m->copy_state(cfg_c, cand, &gb->state);
+        vec_copy(decrypted, gb->decrypted, ctx->cipher_len);
+        if (verbose && allow_report && m->report_verbose)
+            m->report_verbose(ctx, cfg_c, &gb->state, score, decrypted, st);
+    }
+    if (mtx) pthread_mutex_unlock(mtx);
+}
+
+// Worker-count for the restart split: clamp to [1, n_restarts]; deterministic shapes
+// (which early-exit on the first best) stay single-threaded.
+static int engine_plan_threads(int n_threads, int n_restarts, bool deterministic) {
+    int T = n_threads;
+    if (T < 1) T = 1;
+    if (deterministic) T = 1;
+    if (T > n_restarts) T = n_restarts;
+    if (T < 1) T = 1;
+    return T;
+}
+
 // Incremental variant of run_one_config (same restart / annealing / backtrack /
 // best-tracking skeleton) for models that supply the score_neighbor/commit/sync
 // hooks. The current state's decryption (cur_dec) is kept live; each neighbour is
 // scored as a delta and only committed into cur_dec + the model caches on accept,
 // so the per-iteration cost is O(positions the move touched) rather than O(N).
-static double run_one_config_incremental(const CipherModel *m, SolverCtx *ctx,
-                                         const SolverConfig *cfg_c,
-                                         SolverState *out_best, int *out_decrypted) {
+typedef struct { SolverState cur, loc, best;
+                 int cur_dec[MAX_CIPHER_LENGTH], best_dec[MAX_CIPHER_LENGTH]; } IncWorkspace;
 
-    static SolverState cur, loc, best;
-    static int cur_dec[MAX_CIPHER_LENGTH], best_dec[MAX_CIPHER_LENGTH];
+// One incremental restart range [rs_begin, rs_end) on a private workspace, merging
+// its bests into gb. Mirrors the original run_one_config_incremental restart body.
+static void inc_restart_range(const CipherModel *m, SolverCtx *ctx,
+        const SolverConfig *cfg_c, SearchShape shape, bool deterministic,
+        double temp_start, double cooling, int rs_begin, int rs_end,
+        IncWorkspace *ws, EngineGlobalBest *gb, pthread_mutex_t *mtx) {
     ColossusConfig *cfg = ctx->cfg;
-
     double best_score = 0.0, cur_score, loc_score, adjust;
-    bool have_best = false;
-    bool force_primary = true;
-
-    SearchShape shape = m->shape;
-    if (cfg->method == METHOD_SHOTGUN) shape = SHAPE_SHOTGUN;
-    else if (cfg->method == METHOD_ANNEAL) shape = SHAPE_ANNEAL;
-    bool done = false;
+    bool have_best = false, force_primary = true, done = false;
 
     EngineStats st;
     memset(&st, 0, sizeof st);
     st.start_time = clock();
 
-    double temp_start = cfg->init_temp;
-    double cooling;
-    if (cfg->cooling_rate > 0.0) {
-        cooling = cfg->cooling_rate;
-    } else {
-        cooling = 1.0;
-        if (cfg->n_hill_climbs > 1)
-            cooling = pow(cfg->min_temp / temp_start, 1.0 / (double)(cfg->n_hill_climbs - 1));
-    }
-
-    for (int rs = 0; rs < cfg->n_restarts && !done; rs++) {
+    for (int rs = rs_begin; rs < rs_end && !done; rs++) {
         st.n_restarts = rs;
 
         if (have_best && frand() < cfg->backtracking_probability) {
-            m->copy_state(cfg_c, &best, &cur);
-            vec_copy(best_dec, cur_dec, ctx->cipher_len);
+            m->copy_state(cfg_c, &ws->best, &ws->cur);
+            vec_copy(ws->best_dec, ws->cur_dec, ctx->cipher_len);
             cur_score = best_score;
             st.n_backtracks++;
         } else {
-            m->seed(ctx, cfg_c, &cur);
+            m->seed(ctx, cfg_c, &ws->cur);
             adjust = 0.0;
-            m->decrypt(ctx, cfg_c, &cur, cur_dec, &adjust);
-            cur_score = engine_score(ctx, cur_dec, adjust);
+            m->decrypt(ctx, cfg_c, &ws->cur, ws->cur_dec, &adjust);
+            cur_score = engine_score(ctx, ws->cur_dec, adjust);
         }
         // (Re)build the model caches so they describe the current decryption.
-        m->sync_caches(ctx, cfg_c, cur_dec);
+        m->sync_caches(ctx, cfg_c, ws->cur_dec);
 
         force_primary = true;
 
@@ -96,10 +137,10 @@ static double run_one_config_incremental(const CipherModel *m, SolverCtx *ctx,
         for (int it = 0; it < cfg->n_hill_climbs && !done; it++) {
             st.n_iterations++;
 
-            m->copy_state(cfg_c, &cur, &loc);
-            m->perturb(ctx, cfg_c, &loc, &force_primary);
+            m->copy_state(cfg_c, &ws->cur, &ws->loc);
+            m->perturb(ctx, cfg_c, &ws->loc, &force_primary);
 
-            loc_score = m->score_neighbor(ctx, cfg_c, &cur, &loc, cur_dec, cur_score);
+            loc_score = m->score_neighbor(ctx, cfg_c, &ws->cur, &ws->loc, ws->cur_dec, cur_score);
 
             bool accept;
             if (loc_score > cur_score) {
@@ -111,26 +152,61 @@ static double run_one_config_incremental(const CipherModel *m, SolverCtx *ctx,
             }
             if (accept) {
                 if (loc_score <= cur_score) st.n_slips++;
-                m->commit_neighbor(ctx, cfg_c, cur_dec);   // advance cur_dec + caches
-                m->copy_state(cfg_c, &loc, &cur);
+                m->commit_neighbor(ctx, cfg_c, ws->cur_dec);   // advance cur_dec + caches
+                m->copy_state(cfg_c, &ws->loc, &ws->cur);
                 cur_score = loc_score;
             }
             temp *= cooling;
 
             if (!have_best || cur_score > best_score) {
                 best_score = cur_score; have_best = true;
-                m->copy_state(cfg_c, &cur, &best);
-                vec_copy(cur_dec, best_dec, ctx->cipher_len);
-                if (cfg->verbose && m->report_verbose)
-                    m->report_verbose(ctx, cfg_c, &best, best_score, cur_dec, &st);
-                if (shape == SHAPE_DETERMINISTIC) done = true;
+                m->copy_state(cfg_c, &ws->cur, &ws->best);
+                vec_copy(ws->cur_dec, ws->best_dec, ctx->cipher_len);
+                engine_publish_best(m, ctx, cfg_c, &ws->cur, cur_score,
+                                    ws->cur_dec, &st, gb, mtx, cfg->verbose, true);
+                if (deterministic) done = true;
             }
         }
     }
+}
 
-    m->copy_state(cfg_c, &best, out_best);
-    vec_copy(best_dec, out_decrypted, ctx->cipher_len);
-    return best_score;
+// The incremental fast-path is deliberately SINGLE-THREADED (ignores -nthreads): its
+// only user (homophonic) keeps its live neighbour caches in ctx->model_scratch, which
+// every worker would share (they receive the same ctx), a race no thread-local storage
+// fixes. Homophonic is already ~200x faster via the incremental delta scoring, so the
+// lost parallelism is low value; if a future incremental model needs it, give each
+// worker its own model_scratch (per-thread ctx copy) and restore the restart split.
+static double run_one_config_incremental(const CipherModel *m, SolverCtx *ctx,
+                                         const SolverConfig *cfg_c,
+                                         SolverState *out_best, int *out_decrypted) {
+    ColossusConfig *cfg = ctx->cfg;
+
+    SearchShape shape = m->shape;
+    if (cfg->method == METHOD_SHOTGUN) shape = SHAPE_SHOTGUN;
+    else if (cfg->method == METHOD_ANNEAL) shape = SHAPE_ANNEAL;
+    bool deterministic = (shape == SHAPE_DETERMINISTIC);
+
+    double temp_start = cfg->init_temp;
+    double cooling;
+    if (cfg->cooling_rate > 0.0) {
+        cooling = cfg->cooling_rate;
+    } else {
+        cooling = 1.0;
+        if (cfg->n_hill_climbs > 1)
+            cooling = pow(cfg->min_temp / temp_start, 1.0 / (double)(cfg->n_hill_climbs - 1));
+    }
+
+    static EngineGlobalBest gb;
+    gb.have = false; gb.score = 0.0;
+
+    static IncWorkspace ws;
+    inc_restart_range(m, ctx, cfg_c, shape, deterministic, temp_start, cooling,
+                      0, cfg->n_restarts, &ws, &gb, NULL);
+
+    if (!gb.have) return 0.0;
+    m->copy_state(cfg_c, &gb.state, out_best);
+    vec_copy(gb.decrypted, out_decrypted, ctx->cipher_len);
+    return gb.score;
 }
 
 // =====================================================================
@@ -214,46 +290,46 @@ static void pull_toward(const CipherModel *m, const SolverCtx *ctx,
 // run_one_config: writes the best state + its decryption to the out params and
 // returns the best score. Always uses the full decrypt+score path (the optional
 // incremental fast-path hooks are not used here).
-static double run_one_config_pso(const CipherModel *m, SolverCtx *ctx,
-                                 const SolverConfig *cfg_c,
-                                 SolverState *out_best, int *out_decrypted) {
+typedef struct {
+    SolverState *particle;    // [np]
+    SolverState *pbest;       // [np]
+    double      *pbest_score; // [np]
+    SolverState gbest, trial, loc;
+    int decrypted[MAX_CIPHER_LENGTH], gbest_dec[MAX_CIPHER_LENGTH];
+} PsoWorkspace;
 
-    static SolverState particle[MAX_PSO_PARTICLES];
-    static SolverState pbest[MAX_PSO_PARTICLES];
-    static double      pbest_score[MAX_PSO_PARTICLES];
-    static SolverState gbest, trial, loc;
-    static int decrypted[MAX_CIPHER_LENGTH], gbest_dec[MAX_CIPHER_LENGTH];
+// One PSO swarm-relaunch range [rs_begin, rs_end) on a private workspace, merging its
+// global bests into gb. Mirrors the original run_one_config_pso relaunch body. The
+// swarm-seed pass publishes to gb but does NOT log (allow_report=false), matching the
+// original which only reported on the social-update improvement.
+static void pso_restart_range(const CipherModel *m, SolverCtx *ctx,
+        const SolverConfig *cfg_c, int np, int refine, int rs_begin, int rs_end,
+        PsoWorkspace *ws, EngineGlobalBest *gb, pthread_mutex_t *mtx) {
     ColossusConfig *cfg = ctx->cfg;
-
-    int np = cfg->n_particles;
-    if (np < 1) np = 1;
-    if (np > MAX_PSO_PARTICLES) np = MAX_PSO_PARTICLES;
-    int refine = cfg->refine_steps < 0 ? 0 : cfg->refine_steps;
-
-    double gbest_score = 0.0;
-    bool have_gbest = false;
-    bool force_primary = false;
-    double adjust;
+    double gbest_score = 0.0, adjust;
+    bool have_gbest = false, force_primary = false;
 
     EngineStats st;
     memset(&st, 0, sizeof st);
     st.start_time = clock();
 
-    for (int rs = 0; rs < cfg->n_restarts; rs++) {
+    for (int rs = rs_begin; rs < rs_end; rs++) {
         st.n_restarts = rs;
 
         // (Re)seed the swarm and initialise personal / global bests.
         for (int p = 0; p < np; p++) {
-            m->seed(ctx, cfg_c, &particle[p]);
+            m->seed(ctx, cfg_c, &ws->particle[p]);
             adjust = 0.0;
-            m->decrypt(ctx, cfg_c, &particle[p], decrypted, &adjust);
-            double sc = engine_score(ctx, decrypted, adjust);
-            m->copy_state(cfg_c, &particle[p], &pbest[p]);
-            pbest_score[p] = sc;
+            m->decrypt(ctx, cfg_c, &ws->particle[p], ws->decrypted, &adjust);
+            double sc = engine_score(ctx, ws->decrypted, adjust);
+            m->copy_state(cfg_c, &ws->particle[p], &ws->pbest[p]);
+            ws->pbest_score[p] = sc;
             if (!have_gbest || sc > gbest_score) {
                 gbest_score = sc; have_gbest = true;
-                m->copy_state(cfg_c, &particle[p], &gbest);
-                vec_copy(decrypted, gbest_dec, ctx->cipher_len);
+                m->copy_state(cfg_c, &ws->particle[p], &ws->gbest);
+                vec_copy(ws->decrypted, ws->gbest_dec, ctx->cipher_len);
+                engine_publish_best(m, ctx, cfg_c, &ws->gbest, gbest_score,
+                                    ws->gbest_dec, &st, gb, mtx, cfg->verbose, false);
             }
         }
 
@@ -263,60 +339,214 @@ static double run_one_config_pso(const CipherModel *m, SolverCtx *ctx,
                 // 1. inertia: a little random momentum (exploration).
                 int n_inertia = (int)(cfg->inertia * (1.0 + frand()) + 0.5);
                 for (int k = 0; k < n_inertia; k++)
-                    m->perturb(ctx, cfg_c, &particle[p], &force_primary);
+                    m->perturb(ctx, cfg_c, &ws->particle[p], &force_primary);
 
                 // 2. cognitive pull toward this particle's personal best.
                 int n_cog = (int)(cfg->cognitive * frand() *
-                                  state_distance(cfg_c, &particle[p], &pbest[p]) + 0.5);
+                                  state_distance(cfg_c, &ws->particle[p], &ws->pbest[p]) + 0.5);
                 if (n_cog > 0)
-                    pull_toward(m, ctx, cfg_c, &particle[p], &pbest[p], n_cog, &trial);
+                    pull_toward(m, ctx, cfg_c, &ws->particle[p], &ws->pbest[p], n_cog, &ws->trial);
 
                 // 3. social pull toward the global best.
                 int n_soc = (int)(cfg->social * frand() *
-                                  state_distance(cfg_c, &particle[p], &gbest) + 0.5);
+                                  state_distance(cfg_c, &ws->particle[p], &ws->gbest) + 0.5);
                 if (n_soc > 0)
-                    pull_toward(m, ctx, cfg_c, &particle[p], &gbest, n_soc, &trial);
+                    pull_toward(m, ctx, cfg_c, &ws->particle[p], &ws->gbest, n_soc, &ws->trial);
 
                 // 4. memetic local refinement: a short greedy hill-climb.
                 adjust = 0.0;
-                m->decrypt(ctx, cfg_c, &particle[p], decrypted, &adjust);
-                double sc = engine_score(ctx, decrypted, adjust);
+                m->decrypt(ctx, cfg_c, &ws->particle[p], ws->decrypted, &adjust);
+                double sc = engine_score(ctx, ws->decrypted, adjust);
                 for (int k = 0; k < refine; k++) {
-                    m->copy_state(cfg_c, &particle[p], &loc);
-                    m->perturb(ctx, cfg_c, &loc, &force_primary);
+                    m->copy_state(cfg_c, &ws->particle[p], &ws->loc);
+                    m->perturb(ctx, cfg_c, &ws->loc, &force_primary);
                     double adj2 = 0.0;
-                    m->decrypt(ctx, cfg_c, &loc, decrypted, &adj2);
-                    double ls = engine_score(ctx, decrypted, adj2);
-                    if (ls > sc) { m->copy_state(cfg_c, &loc, &particle[p]); sc = ls; }
+                    m->decrypt(ctx, cfg_c, &ws->loc, ws->decrypted, &adj2);
+                    double ls = engine_score(ctx, ws->decrypted, adj2);
+                    if (ls > sc) { m->copy_state(cfg_c, &ws->loc, &ws->particle[p]); sc = ls; }
                 }
 
                 // 5. update personal and global bests.
-                if (sc > pbest_score[p]) {
-                    m->copy_state(cfg_c, &particle[p], &pbest[p]);
-                    pbest_score[p] = sc;
+                if (sc > ws->pbest_score[p]) {
+                    m->copy_state(cfg_c, &ws->particle[p], &ws->pbest[p]);
+                    ws->pbest_score[p] = sc;
                     if (sc > gbest_score) {
                         gbest_score = sc;
-                        m->copy_state(cfg_c, &particle[p], &gbest);
+                        m->copy_state(cfg_c, &ws->particle[p], &ws->gbest);
                         adjust = 0.0;
-                        m->decrypt(ctx, cfg_c, &gbest, gbest_dec, &adjust);
-                        if (cfg->verbose && m->report_verbose)
-                            m->report_verbose(ctx, cfg_c, &gbest, gbest_score, gbest_dec, &st);
+                        m->decrypt(ctx, cfg_c, &ws->gbest, ws->gbest_dec, &adjust);
+                        engine_publish_best(m, ctx, cfg_c, &ws->gbest, gbest_score,
+                                            ws->gbest_dec, &st, gb, mtx, cfg->verbose, true);
                     }
                 }
             }
         }
     }
+}
 
-    m->copy_state(cfg_c, &gbest, out_best);
-    adjust = 0.0;
-    m->decrypt(ctx, cfg_c, &gbest, out_decrypted, &adjust);
-    return gbest_score;
+typedef struct {
+    const CipherModel *m; SolverCtx *ctx; const SolverConfig *cfg_c;
+    int np, refine, rs_begin, rs_end; uint32_t seed;
+    PsoWorkspace *ws; EngineGlobalBest *gb; pthread_mutex_t *mtx;
+} PsoThreadArg;
+
+static void *pso_thread_main(void *p) {
+    PsoThreadArg *a = (PsoThreadArg *)p;
+    rng_state = a->seed;
+    pso_restart_range(a->m, a->ctx, a->cfg_c, a->np, a->refine,
+                      a->rs_begin, a->rs_end, a->ws, a->gb, a->mtx);
+    return NULL;
+}
+
+static double run_one_config_pso(const CipherModel *m, SolverCtx *ctx,
+                                 const SolverConfig *cfg_c,
+                                 SolverState *out_best, int *out_decrypted) {
+    ColossusConfig *cfg = ctx->cfg;
+
+    int np = cfg->n_particles;
+    if (np < 1) np = 1;
+    if (np > MAX_PSO_PARTICLES) np = MAX_PSO_PARTICLES;
+    int refine = cfg->refine_steps < 0 ? 0 : cfg->refine_steps;
+
+    static EngineGlobalBest gb;
+    gb.have = false; gb.score = 0.0;
+
+    // PSO is never a model default (reached only via -method pso), so shape is PSO,
+    // never deterministic -> the restart split is purely over swarm relaunches.
+    int T = engine_plan_threads(cfg->n_threads, cfg->n_restarts, false);
+    if (T <= 1) {
+        static SolverState s_particle[MAX_PSO_PARTICLES], s_pbest[MAX_PSO_PARTICLES];
+        static double s_pbest_score[MAX_PSO_PARTICLES];
+        static PsoWorkspace ws;
+        ws.particle = s_particle; ws.pbest = s_pbest; ws.pbest_score = s_pbest_score;
+        pso_restart_range(m, ctx, cfg_c, np, refine, 0, cfg->n_restarts, &ws, &gb, NULL);
+    } else {
+        uint32_t base_seed = fast_rand();
+        pthread_mutex_t mtx; pthread_mutex_init(&mtx, NULL);
+        pthread_t *tids = malloc((size_t)T * sizeof *tids);
+        PsoThreadArg *args = malloc((size_t)T * sizeof *args);
+        PsoWorkspace *wss = malloc((size_t)T * sizeof *wss);
+        for (int t = 0; t < T; t++) {   // per-thread swarm arrays
+            wss[t].particle = malloc((size_t)np * sizeof(SolverState));
+            wss[t].pbest = malloc((size_t)np * sizeof(SolverState));
+            wss[t].pbest_score = malloc((size_t)np * sizeof(double));
+        }
+        int per = cfg->n_restarts / T, rem = cfg->n_restarts % T, start = 0;
+        for (int t = 0; t < T; t++) {
+            int cnt = per + (t < rem ? 1 : 0);
+            args[t] = (PsoThreadArg){ .m = m, .ctx = ctx, .cfg_c = cfg_c, .np = np,
+                .refine = refine, .rs_begin = start, .rs_end = start + cnt,
+                .seed = rng_seed_thread(base_seed, t), .ws = &wss[t], .gb = &gb, .mtx = &mtx };
+            start += cnt;
+            pthread_create(&tids[t], NULL, pso_thread_main, &args[t]);
+        }
+        for (int t = 0; t < T; t++) pthread_join(tids[t], NULL);
+        for (int t = 0; t < T; t++) { free(wss[t].particle); free(wss[t].pbest); free(wss[t].pbest_score); }
+        free(tids); free(args); free(wss);
+        pthread_mutex_destroy(&mtx);
+    }
+
+    if (!gb.have) return 0.0;
+    m->copy_state(cfg_c, &gb.state, out_best);
+    double adjust = 0.0;
+    m->decrypt(ctx, cfg_c, &gb.state, out_decrypted, &adjust);
+    return gb.score;
 }
 
 // Hill-climb one outer config: shotgun restarts + per-iteration neighbour move,
 // with SHOTGUN slip / ANNEAL Metropolis acceptance and best-state tracking. Writes
 // the config's best state to *out_best and its decryption to out_decrypted, and
 // returns the best score.
+typedef struct { SolverState cur, loc, best; int decrypted[MAX_CIPHER_LENGTH]; } GenWorkspace;
+
+// One generic (non-incremental) restart range [rs_begin, rs_end) on a private
+// workspace, merging its bests into gb. Mirrors the original run_one_config restart
+// body; the "restart-0 backtrack draws no RNG" invariant holds because have_best
+// starts false (best is only recorded inside the inner loop).
+static void gen_restart_range(const CipherModel *m, SolverCtx *ctx,
+        const SolverConfig *cfg_c, SearchShape shape, bool deterministic,
+        double temp_start, double cooling, int rs_begin, int rs_end,
+        GenWorkspace *ws, EngineGlobalBest *gb, pthread_mutex_t *mtx) {
+    ColossusConfig *cfg = ctx->cfg;
+    double best_score = 0.0, cur_score, loc_score, adjust;
+    bool have_best = false, force_primary = true, done = false;
+
+    EngineStats st;
+    memset(&st, 0, sizeof st);
+    st.start_time = clock();
+
+    for (int rs = rs_begin; rs < rs_end && !done; rs++) {
+        st.n_restarts = rs;
+
+        if (have_best && frand() < cfg->backtracking_probability) {
+            m->copy_state(cfg_c, &ws->best, &ws->cur);
+            cur_score = best_score;
+            st.n_backtracks++;
+        } else {
+            m->seed(ctx, cfg_c, &ws->cur);
+            adjust = 0.0;
+            m->decrypt(ctx, cfg_c, &ws->cur, ws->decrypted, &adjust);
+            cur_score = engine_score(ctx, ws->decrypted, adjust);
+        }
+
+        // force_primary is the per-restart "must perturb the primary lane" flag
+        // (polyalpha's perturbate_keyword_p); the model reads and updates it.
+        force_primary = true;
+
+        double temp = temp_start;
+        for (int it = 0; it < cfg->n_hill_climbs && !done; it++) {
+            st.n_iterations++;
+
+            m->copy_state(cfg_c, &ws->cur, &ws->loc);
+
+            m->perturb(ctx, cfg_c, &ws->loc, &force_primary);
+
+            adjust = 0.0;
+            m->decrypt(ctx, cfg_c, &ws->loc, ws->decrypted, &adjust);
+            loc_score = engine_score(ctx, ws->decrypted, adjust);
+
+            bool accept;
+            if (loc_score > cur_score) {
+                accept = true;
+            } else if (shape == SHAPE_ANNEAL) {
+                accept = frand() < exp((loc_score - cur_score) / temp);
+            } else {
+                accept = frand() < cfg->slip_probability;
+            }
+            if (accept) {
+                if (loc_score <= cur_score) st.n_slips++;
+                m->copy_state(cfg_c, &ws->loc, &ws->cur);
+                cur_score = loc_score;
+            }
+            temp *= cooling;
+
+            if (!have_best || cur_score > best_score) {
+                best_score = cur_score; have_best = true;
+                m->copy_state(cfg_c, &ws->cur, &ws->best);
+                engine_publish_best(m, ctx, cfg_c, &ws->cur, cur_score,
+                                    ws->decrypted, &st, gb, mtx, cfg->verbose, true);
+                if (deterministic) done = true;
+            }
+        }
+    }
+}
+
+typedef struct {
+    const CipherModel *m; SolverCtx *ctx; const SolverConfig *cfg_c;
+    SearchShape shape; bool deterministic; double temp_start, cooling;
+    int rs_begin, rs_end; uint32_t seed;
+    GenWorkspace *ws; EngineGlobalBest *gb; pthread_mutex_t *mtx;
+} GenThreadArg;
+
+static void *gen_thread_main(void *p) {
+    GenThreadArg *a = (GenThreadArg *)p;
+    rng_state = a->seed;
+    gen_restart_range(a->m, a->ctx, a->cfg_c, a->shape, a->deterministic,
+                      a->temp_start, a->cooling, a->rs_begin, a->rs_end,
+                      a->ws, a->gb, a->mtx);
+    return NULL;
+}
+
 static double run_one_config(const CipherModel *m, SolverCtx *ctx,
                              const SolverConfig *cfg_c,
                              SolverState *out_best, int *out_decrypted) {
@@ -330,13 +560,7 @@ static double run_one_config(const CipherModel *m, SolverCtx *ctx,
     if (m->score_neighbor && m->commit_neighbor && m->sync_caches)
         return run_one_config_incremental(m, ctx, cfg_c, out_best, out_decrypted);
 
-    static SolverState cur, loc, best;
-    static int decrypted[MAX_CIPHER_LENGTH];
     ColossusConfig *cfg = ctx->cfg;
-
-    double best_score = 0.0, cur_score, loc_score, adjust;
-    bool have_best = false;
-    bool force_primary = true;               // first iteration forces a primary (keyword) move
 
     // -method overrides the model's built-in shape on EVERY cipher type (the engine
     // is acceptance-strategy agnostic); METHOD_DEFAULT keeps the model's own shape.
@@ -344,11 +568,6 @@ static double run_one_config(const CipherModel *m, SolverCtx *ctx,
     if (cfg->method == METHOD_SHOTGUN) shape = SHAPE_SHOTGUN;
     else if (cfg->method == METHOD_ANNEAL) shape = SHAPE_ANNEAL;
     bool deterministic = (shape == SHAPE_DETERMINISTIC);
-    bool done = false;
-
-    EngineStats st;
-    memset(&st, 0, sizeof st);
-    st.start_time = clock();
 
     // Geometric Metropolis annealing schedule (used only by SHAPE_ANNEAL). The
     // start temperature and cooling come from cfg (-inittemp / -coolingrate); when
@@ -364,70 +583,42 @@ static double run_one_config(const CipherModel *m, SolverCtx *ctx,
             cooling = pow(cfg->min_temp / temp_start, 1.0 / (double)(cfg->n_hill_climbs - 1));
     }
 
-    for (int rs = 0; rs < cfg->n_restarts && !done; rs++) {
-        st.n_restarts = rs;
+    static EngineGlobalBest gb;
+    gb.have = false; gb.score = 0.0;
 
-        if (have_best && frand() < cfg->backtracking_probability) {
-            m->copy_state(cfg_c, &best, &cur);
-            cur_score = best_score;
-            st.n_backtracks++;
-        } else {
-            m->seed(ctx, cfg_c, &cur);
-            adjust = 0.0;
-            m->decrypt(ctx, cfg_c, &cur, decrypted, &adjust);
-            cur_score = engine_score(ctx, decrypted, adjust);
+    int T = engine_plan_threads(cfg->n_threads, cfg->n_restarts, deterministic);
+    if (T <= 1) {
+        // Sequential path: single restart range on the calling thread, over the
+        // file-static workspace, main-thread RNG, no mutex -> bit-identical to before.
+        static GenWorkspace ws;
+        gen_restart_range(m, ctx, cfg_c, shape, deterministic, temp_start, cooling,
+                          0, cfg->n_restarts, &ws, &gb, NULL);
+    } else {
+        uint32_t base_seed = fast_rand();
+        pthread_mutex_t mtx; pthread_mutex_init(&mtx, NULL);
+        pthread_t *tids = malloc((size_t)T * sizeof *tids);
+        GenThreadArg *args = malloc((size_t)T * sizeof *args);
+        GenWorkspace *wss = malloc((size_t)T * sizeof *wss);
+        int per = cfg->n_restarts / T, rem = cfg->n_restarts % T, start = 0;
+        for (int t = 0; t < T; t++) {
+            int cnt = per + (t < rem ? 1 : 0);   // contiguous split of [0, n_restarts)
+            args[t] = (GenThreadArg){ .m = m, .ctx = ctx, .cfg_c = cfg_c, .shape = shape,
+                .deterministic = deterministic, .temp_start = temp_start, .cooling = cooling,
+                .rs_begin = start, .rs_end = start + cnt, .seed = rng_seed_thread(base_seed, t),
+                .ws = &wss[t], .gb = &gb, .mtx = &mtx };
+            start += cnt;
+            pthread_create(&tids[t], NULL, gen_thread_main, &args[t]);
         }
-
-        // Best is recorded only inside the hill-climb loop below (matching every
-        // original climber), so have_best transitions to true on the first
-        // iteration -- the restart-0 backtrack check then draws no RNG, keeping
-        // the draw sequence identical to the per-cipher climbers this replaces.
-
-        // force_primary is the per-restart "must perturb the primary lane" flag
-        // (polyalpha's perturbate_keyword_p); the model reads and updates it.
-        force_primary = true;
-
-        double temp = temp_start;
-        for (int it = 0; it < cfg->n_hill_climbs && !done; it++) {
-            st.n_iterations++;
-
-            m->copy_state(cfg_c, &cur, &loc);
-
-            m->perturb(ctx, cfg_c, &loc, &force_primary);
-
-            adjust = 0.0;
-            m->decrypt(ctx, cfg_c, &loc, decrypted, &adjust);
-            loc_score = engine_score(ctx, decrypted, adjust);
-
-            bool accept;
-            if (loc_score > cur_score) {
-                accept = true;
-            } else if (shape == SHAPE_ANNEAL) {
-                accept = frand() < exp((loc_score - cur_score) / temp);
-            } else {
-                accept = frand() < cfg->slip_probability;
-            }
-            if (accept) {
-                if (loc_score <= cur_score) st.n_slips++;
-                m->copy_state(cfg_c, &loc, &cur);
-                cur_score = loc_score;
-            }
-            temp *= cooling;
-
-            if (!have_best || cur_score > best_score) {
-                best_score = cur_score; have_best = true;
-                m->copy_state(cfg_c, &cur, &best);
-                if (cfg->verbose && m->report_verbose)
-                    m->report_verbose(ctx, cfg_c, &best, best_score, decrypted, &st);
-                if (deterministic) done = true;
-            }
-        }
+        for (int t = 0; t < T; t++) pthread_join(tids[t], NULL);
+        free(tids); free(args); free(wss);
+        pthread_mutex_destroy(&mtx);
     }
 
-    m->copy_state(cfg_c, &best, out_best);
-    adjust = 0.0;
-    m->decrypt(ctx, cfg_c, &best, out_decrypted, &adjust);
-    return best_score;
+    if (!gb.have) return 0.0;
+    m->copy_state(cfg_c, &gb.state, out_best);
+    double adjust = 0.0;
+    m->decrypt(ctx, cfg_c, &gb.state, out_decrypted, &adjust);
+    return gb.score;
 }
 
 double run_solver(const CipherModel *m, SolverCtx *ctx) {

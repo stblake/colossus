@@ -146,7 +146,7 @@ void gromark_build_from_keyword_idx(const int kw[], int P, int sigma[],
 
 void gromark_encrypt(const int plain[], int len, const int sigma[],
                      const int primer[], int primer_len, int out[]) {
-    static int d[MAX_CIPHER_LENGTH];
+    static _Thread_local int d[MAX_CIPHER_LENGTH];
     gromark_chain_key(primer, primer_len, len, d);
     for (int i = 0; i < len; i++)
         out[i] = sigma[(plain[i] + d[i]) % ALPHABET_SIZE];
@@ -154,7 +154,7 @@ void gromark_encrypt(const int plain[], int len, const int sigma[],
 
 void gromark_decrypt(const int cipher[], int len, const int sigma[],
                      const int primer[], int primer_len, int out[]) {
-    static int d[MAX_CIPHER_LENGTH];
+    static _Thread_local int d[MAX_CIPHER_LENGTH];
     int inv[ALPHABET_SIZE];
     gromark_chain_key(primer, primer_len, len, d);
     gromark_inverse(sigma, inv);
@@ -166,7 +166,7 @@ void gromark_decrypt(const int cipher[], int len, const int sigma[],
 
 void gromark_periodic_encrypt(const int plain[], int len, const int sigma[],
                      const int primer[], int period, const int offsets[], int out[]) {
-    static int d[MAX_CIPHER_LENGTH];
+    static _Thread_local int d[MAX_CIPHER_LENGTH];
     gromark_chain_key(primer, period, len, d);
     for (int i = 0; i < len; i++) {
         int g = (i / period) % period;
@@ -176,7 +176,7 @@ void gromark_periodic_encrypt(const int plain[], int len, const int sigma[],
 
 void gromark_periodic_decrypt(const int cipher[], int len, const int sigma[],
                      const int primer[], int period, const int offsets[], int out[]) {
-    static int d[MAX_CIPHER_LENGTH];
+    static _Thread_local int d[MAX_CIPHER_LENGTH];
     int inv[ALPHABET_SIZE];
     gromark_chain_key(primer, period, len, d);
     gromark_inverse(sigma, inv);

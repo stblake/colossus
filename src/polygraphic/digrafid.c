@@ -30,7 +30,7 @@
 
 // Single-threaded scratch for the per-block digit stream (3 digits per digraph, at most
 // 3*period <= 3*(len/2) entries). Kept off the stack like bifid's stream scratch.
-static int g_digrafid_stream[3 * MAX_CIPHER_LENGTH];
+static _Thread_local int g_digrafid_stream[3 * MAX_CIPHER_LENGTH];
 
 // Plaintext/ciphertext digraph (a, b) -> 3-digit number (top, mid, bot), each 0..8, using
 // the precomputed inverse tables posH (symbol -> H cell) and posV (symbol -> V cell).

@@ -45,7 +45,7 @@ const char *adfgvx_labels(int side) {
 // Single-threaded scratch for the row-major coordinate stream (length 2N <=
 // MAX_CIPHER_LENGTH). Kept off the stack so the per-iteration decrypt hook does not
 // carry a large frame.
-static int g_adfgvx_stream[2 * MAX_CIPHER_LENGTH];
+static _Thread_local int g_adfgvx_stream[2 * MAX_CIPHER_LENGTH];
 
 // Columnar transposition ENCRYPT (the inverse of decrypt_columnar): write `in`
 // row-major into K columns (the leftmost len % K columns one cell taller when the

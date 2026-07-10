@@ -44,7 +44,7 @@ static int nico_variant_of(int cipher_type) {
 static void nico_decrypt_core(const SolverCtx *ctx, int P, int H, const int *order,
                               int variant, int *shifts_out, int *plain) {
     int n = ctx->cipher_len;
-    static int desub[MAX_CIPHER_LENGTH];
+    static _Thread_local int desub[MAX_CIPHER_LENGTH];
     nicodemus_detranspose(ctx->cipher, n, P, H, order, desub);
 
     for (int col = 0; col < P; col++) {
