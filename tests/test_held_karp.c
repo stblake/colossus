@@ -89,12 +89,13 @@ static void test_ngram_sum_raw_additive(void) {
         double seam = 0.0;
         for (int s = la - n + 1; s <= la - 1; s++) {
             if (s < 0) continue;
-            int idx = 0, basep = 1, bad = 0;
+            int win[16], bad = 0;
             for (int j = 0; j < n; j++) {
                 int v = C[s + j]; if (v < 0) { bad++; v = 0; }
-                idx += v * basep; basep *= g_alpha;
+                win[j] = v;
             }
-            if (bad == 0) seam += tab[idx];
+            // Use the production packer so the test tracks ngram_sum_raw's convention.
+            if (bad == 0) seam += tab[ngram_index_int(win, n)];
         }
         CHECK(fabs(sc - (sa + sb + seam)) < 1e-6, "sum_raw(A++B) != sum_raw(A)+sum_raw(B)+seam");
     }
@@ -119,11 +120,8 @@ static void test_seam_best_row_order(void) {
     // Reward every quadgram appearing in the concatenation of the true order 0..4.
     int flat[64], fl = 0;
     for (int r = 0; r < R; r++) for (int c = 0; c < W; c++) flat[fl++] = rowsbuf[r][c];
-    for (int i = 0; i + n <= fl; i++) {
-        int idx = 0, basep = 1;
-        for (int j = 0; j < n; j++) { idx += flat[i + j] * basep; basep *= g_alpha; }
-        tab[idx] = 5.0f;
-    }
+    for (int i = 0; i + n <= fl; i++)
+        tab[ngram_index_int(&flat[i], n)] = 5.0f;   // production packer (convention-agnostic)
     int *rows[5]; int rowlen[5];
     for (int r = 0; r < R; r++) { rows[r] = rowsbuf[r]; rowlen[r] = W; }
     double indiv_buf[5], delta_buf[25]; int order[5];

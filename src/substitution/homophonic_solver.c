@@ -124,14 +124,14 @@ static void homophonic_perturb(const SolverCtx *ctx, const SolverConfig *cc,
     }
 }
 
-// Packed little-endian base-g_alpha index of the n-gram window at start `w`, reading
+// Packed big-endian base-g_alpha index of the n-gram window at start `w`, reading
 // each position's letter through `letter(p)`. Matches ngram_score()'s packing exactly
-// (idx = sum_j letter(w+j) * g_alpha^j), so the same ngram_data[] entry is selected.
+// (idx = sum_j letter(w+j) * g_alpha^(ng-1-j)), so the same ngram_data[] entry is
+// selected -- the incremental ngsum stays bit-identical to the full rescore.
 #define HOMO_WINDOW_INDEX(w, ng, letter) ({                 \
-    int _idx = 0, _base = 1;                                \
-    for (int _j = 0; _j < (ng); _j++) {                     \
-        _idx += letter((w) + _j) * _base; _base *= g_alpha; \
-    }                                                       \
+    int _idx = 0;                                           \
+    for (int _j = 0; _j < (ng); _j++)                       \
+        _idx = _idx * g_alpha + letter((w) + _j);           \
     _idx; })
 
 // Rebuild the incremental caches (letter histogram + running n-gram sum) from a full

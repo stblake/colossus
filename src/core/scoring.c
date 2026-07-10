@@ -102,7 +102,7 @@ double crib_score(int text[], int len, int crib_indices[], int crib_positions[],
 }
 
 double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram_size) {
-    int index, base;
+    int index;
     double score = 0.;
 
     // pow(g_alpha, ngram_size) is a positive constant for the whole run
@@ -142,25 +142,27 @@ double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram
         if (decrypted[i] >= 0) letters[m++] = decrypted[i];
 
     // Rolling base-26 index over the compacted stream. The packed window index is
-    // little-endian idx_i = sum_{j} letters[i+j] * 26^j, so advancing one position
-    // is exact integer arithmetic:
-    //   idx_{i+1} = (idx_i - letters[i]) / 26 + letters[i+n] * 26^(n-1).
-    // (idx_i - letters[i]) is divisible by 26, so the integer division is exact.
+    // BIG-endian idx_i = sum_{j} letters[i+j] * 26^(n-1-j) (position 0 = most
+    // significant), so advancing one position is a MULTIPLY, not a divide:
+    //   idx_{i+1} = (idx_i - letters[i]*26^(n-1)) * 26 + letters[i+n].
+    // Dropping the divide matters because idx is loop-carried (each window's index
+    // depends on the previous), so an integer division by the runtime variable
+    // g_alpha would serialize a ~20-cycle divide per window; the multiply is ~3.
+    // Bit-identical to the old little-endian packing: load_ngrams builds the table
+    // with the SAME convention (ngram_index_str), so every n-gram lands the SAME
+    // float at a different slot, and the per-window sum runs in the SAME order.
     int n_windows = m - ngram_size + 1;
     if (n_windows > 0) {
-        int top = 1;                    // 26^(ngram_size-1)
+        int top = 1;                    // g_alpha^(ngram_size-1)
         for (int j = 0; j < ngram_size - 1; j++) top *= g_alpha;
 
         index = 0;
-        base = 1;
-        for (int j = 0; j < ngram_size; j++) {
-            index += letters[j]*base;
-            base *= g_alpha;
-        }
+        for (int j = 0; j < ngram_size; j++)
+            index = index * g_alpha + letters[j];
         score += ngram_data[index];
 
         for (int i = 1; i < n_windows; i++) {
-            index = (index - letters[i - 1]) / g_alpha + letters[i + ngram_size - 1] * top;
+            index = (index - letters[i - 1] * top) * g_alpha + letters[i + ngram_size - 1];
             score += ngram_data[index];
         }
     }
@@ -177,12 +179,15 @@ double ngram_sum_raw(const int *text, int len, const float *ngram_data, int ngra
     int top = 1;                          // g_alpha^(ngram_size-1)
     for (int j = 0; j < ngram_size - 1; j++) top *= g_alpha;
 
-    int index = 0, base = 1, bad = 0;
+    // Big-endian packing, same convention (and same table) as ngram_score: the roll
+    // is a multiply, and the outgoing letter sits at the top digit (weight `top`). A
+    // sentinel contributed 0 to the index, so subtracting out_v*top (out_v forced to
+    // 0 for a sentinel) removes exactly what was added -- bit-identical to before.
+    int index = 0, bad = 0;
     for (int j = 0; j < ngram_size; j++) {
         int v = text[j];
         if (v < 0) { bad++; v = 0; }       // sentinel: contributes 0 to the packed index
-        index += v * base;
-        base *= g_alpha;
+        index = index * g_alpha + v;
     }
     if (bad == 0) score += ngram_data[index];
 
@@ -192,7 +197,7 @@ double ngram_sum_raw(const int *text, int len, const float *ngram_data, int ngra
         if (out_v < 0) { bad--; out_v = 0; }
         int in_iv = in_v;
         if (in_v < 0) { bad++; in_iv = 0; }
-        index = (index - out_v) / g_alpha + in_iv * top;
+        index = (index - out_v * top) * g_alpha + in_iv;
         if (bad == 0) score += ngram_data[index];
     }
     return score;
@@ -345,9 +350,10 @@ float* load_ngrams(char *ngram_file, int ngram_size, bool verbose) {
         // same (max) weight, so a plaintext written with any words/segments reversed
         // scores like clean English (a reversed word's n-grams are the reverses of the
         // forward word's). Applied AFTER normalization so weights are final; max makes
-        // it symmetric and order-independent. The packed index is
-        // sum digit[j]*g_alpha^j (position 0 = least significant, per ngram_score), so
-        // the reversed n-gram maps digit at j to weight g_alpha^(ngram_size-1-j).
+        // it symmetric and order-independent. Independent of endianness: this
+        // extracts each digit low-to-high (% g_alpha) and re-places it high-to-low
+        // (weights topw..1), which maps a slot to its digit-reversed twin's slot
+        // under either packing -- so it is unchanged by the big-endian switch.
         float *sym = malloc(n_ngrams*sizeof(float));
         int topw = int_pow(g_alpha, ngram_size - 1);   // g_alpha^(ngram_size-1)
         for (i = 0; i < n_ngrams; i++) {
@@ -368,24 +374,23 @@ float* load_ngrams(char *ngram_file, int ngram_size, bool verbose) {
 }
 
 int ngram_index_str(char *ngram, int ngram_size) {
-    int c, index = 0, base = 1;
+    // Big-endian packing (idx = sum c*g_alpha^(n-1-j)), matching ngram_score's
+    // window walk exactly -- the two conventions must agree or the table is misread.
+    int c, index = 0;
     for (int i = 0; i < ngram_size; i++) {
         c = g_char_to_idx[toupper((unsigned char) ngram[i]) & 127];
         // An n-gram containing a letter outside the runtime alphabet (e.g. 'P'
         // under -excludeletter P) cannot occur in the plaintext, so it has no
         // slot; signal the caller to skip it.
         if (c < 0) return -1;
-        index += c*base;
-        base *= g_alpha;
+        index = index * g_alpha + c;
     }
     return index;
 }
 
 int ngram_index_int(int *ngram, int ngram_size) {
-    int index = 0, base = 1;
-    for (int i = 0; i < ngram_size; i++) {
-        index += ngram[i]*base;
-        base *= g_alpha;
-    }
+    int index = 0;                         // big-endian, matching ngram_index_str
+    for (int i = 0; i < ngram_size; i++)
+        index = index * g_alpha + ngram[i];
     return index;
 }
