@@ -266,6 +266,46 @@ static void homophonic_copy(const SolverConfig *cc, const SolverState *src, Solv
     for (int i = 0; i < cc->period; i++) dst->key[i] = src->key[i];
 }
 
+// Per-thread scratch clone (enables -nthreads on the incremental fast path). Shares
+// the read-only fields built once in solve_homophonic (tab, scale, and the position
+// index pos/pos_off -- never written during the search) but allocates this worker its
+// OWN copies of every buffer the search mutates: the live caches (counts/ngsum are
+// inline in the struct, zeroed here and rebuilt by sync_caches each restart) and the
+// per-call scratch (win_mark/win_list/pend_sym/pend_newc). Returns NULL on OOM.
+static void *homophonic_scratch_clone(const SolverCtx *ctx) {
+    const HomophonicScratch *src = (const HomophonicScratch *) ctx->model_scratch;
+    int len = ctx->cipher_len, n = src->n_symbols;
+    HomophonicScratch *h = malloc(sizeof *h);
+    if (!h) return NULL;
+    memset(h, 0, sizeof *h);
+    // Shared, read-only during the search.
+    h->tab = src->tab;
+    h->n_symbols = src->n_symbols;
+    h->scale = src->scale;
+    h->pos = src->pos;          // position index: built once, only read -> shared
+    h->pos_off = src->pos_off;
+    // Private, mutated during the search.
+    h->win_mark  = calloc(len > 0 ? len : 1, sizeof(char));
+    h->win_list  = malloc(sizeof(int) * (len > 0 ? len : 1));
+    h->pend_sym  = malloc(sizeof(int) * (n > 0 ? n : 1));
+    h->pend_newc = malloc(sizeof(int) * (n > 0 ? n : 1));
+    if (!h->win_mark || !h->win_list || !h->pend_sym || !h->pend_newc) {
+        free(h->win_mark); free(h->win_list); free(h->pend_sym); free(h->pend_newc);
+        free(h);
+        return NULL;
+    }
+    return h;
+}
+
+// Free a clone: only its private allocations + the struct. pos/pos_off/tab are shared
+// with the owner scratch (freed by solve_homophonic), so they are NOT freed here.
+static void homophonic_scratch_free(void *scratch) {
+    HomophonicScratch *h = (HomophonicScratch *) scratch;
+    if (!h) return;
+    free(h->win_mark); free(h->win_list); free(h->pend_sym); free(h->pend_newc);
+    free(h);
+}
+
 static void homophonic_decrypt(const SolverCtx *ctx, const SolverConfig *cc,
                                SolverState *st, int *out, double *score_adjust) {
     (void) cc;
@@ -338,6 +378,8 @@ static const CipherModel HOMOPHONIC_MODEL = {
     .sync_caches = homophonic_sync_caches,
     .score_neighbor = homophonic_score_neighbor,
     .commit_neighbor = homophonic_commit_neighbor,
+    .scratch_clone = homophonic_scratch_clone,
+    .scratch_free = homophonic_scratch_free,
 };
 
 void solve_homophonic(char *ciphertext_str, char *cribtext_str,

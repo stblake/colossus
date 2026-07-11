@@ -170,12 +170,30 @@ static void inc_restart_range(const CipherModel *m, SolverCtx *ctx,
     }
 }
 
-// The incremental fast-path is deliberately SINGLE-THREADED (ignores -nthreads): its
-// only user (homophonic) keeps its live neighbour caches in ctx->model_scratch, which
-// every worker would share (they receive the same ctx), a race no thread-local storage
-// fixes. Homophonic is already ~200x faster via the incremental delta scoring, so the
-// lost parallelism is low value; if a future incremental model needs it, give each
-// worker its own model_scratch (per-thread ctx copy) and restore the restart split.
+typedef struct {
+    const CipherModel *m; const SolverConfig *cfg_c;
+    SearchShape shape; bool deterministic; double temp_start, cooling;
+    int rs_begin, rs_end; uint32_t seed;
+    IncWorkspace *ws; EngineGlobalBest *gb; pthread_mutex_t *mtx;
+    SolverCtx ctx_copy;   // shallow copy of ctx, repointed at this worker's scratch
+} IncThreadArg;
+
+static void *inc_thread_main(void *p) {
+    IncThreadArg *a = (IncThreadArg *)p;
+    rng_state = a->seed;
+    inc_restart_range(a->m, &a->ctx_copy, a->cfg_c, a->shape, a->deterministic,
+                      a->temp_start, a->cooling, a->rs_begin, a->rs_end,
+                      a->ws, a->gb, a->mtx);
+    return NULL;
+}
+
+// The incremental fast-path supports -nthreads only for models that ALSO supply the
+// scratch_clone/scratch_free hooks: its live neighbour caches live in
+// ctx->model_scratch (a single shared pointer), so each worker needs its own private
+// scratch (a shallow ctx copy repointed at a per-thread clone), exactly like the
+// generic/PSO drivers give each worker its own workspace. A model that leaves the
+// clone hooks NULL (or -nthreads <= 1) takes the verbatim sequential path -- so every
+// fixed-seed solve stays bit-identical there.
 static double run_one_config_incremental(const CipherModel *m, SolverCtx *ctx,
                                          const SolverConfig *cfg_c,
                                          SolverState *out_best, int *out_decrypted) {
@@ -199,9 +217,56 @@ static double run_one_config_incremental(const CipherModel *m, SolverCtx *ctx,
     static EngineGlobalBest gb;
     gb.have = false; gb.score = 0.0;
 
-    static IncWorkspace ws;
-    inc_restart_range(m, ctx, cfg_c, shape, deterministic, temp_start, cooling,
-                      0, cfg->n_restarts, &ws, &gb, NULL);
+    int T = engine_plan_threads(cfg->n_threads, cfg->n_restarts, deterministic);
+    if (T <= 1 || !m->scratch_clone || !m->scratch_free) {
+        // Sequential path: single restart range on the calling thread, over the
+        // file-static workspace + the owner scratch, main-thread RNG, no mutex ->
+        // bit-identical to before.
+        static IncWorkspace ws;
+        inc_restart_range(m, ctx, cfg_c, shape, deterministic, temp_start, cooling,
+                          0, cfg->n_restarts, &ws, &gb, NULL);
+    } else {
+        uint32_t base_seed = fast_rand();
+        pthread_mutex_t mtx; pthread_mutex_init(&mtx, NULL);
+        pthread_t *tids = malloc((size_t)T * sizeof *tids);
+        IncThreadArg *args = malloc((size_t)T * sizeof *args);
+        IncWorkspace *wss = malloc((size_t)T * sizeof *wss);
+        bool ok = tids && args && wss;
+        if (ok)
+            for (int t = 0; t < T; t++) args[t].ctx_copy.model_scratch = NULL;  // = "no clone yet"
+        if (ok)
+            for (int t = 0; t < T; t++) {
+                void *sc = m->scratch_clone(ctx);
+                if (!sc) { ok = false; break; }
+                args[t].ctx_copy = *ctx;                 // shallow copy of the shared ctx
+                args[t].ctx_copy.model_scratch = sc;     // ... repointed at this worker's scratch
+            }
+        if (ok) {
+            int per = cfg->n_restarts / T, rem = cfg->n_restarts % T, start = 0;
+            for (int t = 0; t < T; t++) {
+                int cnt = per + (t < rem ? 1 : 0);   // contiguous split of [0, n_restarts)
+                args[t].m = m; args[t].cfg_c = cfg_c; args[t].shape = shape;
+                args[t].deterministic = deterministic;
+                args[t].temp_start = temp_start; args[t].cooling = cooling;
+                args[t].rs_begin = start; args[t].rs_end = start + cnt;
+                args[t].seed = rng_seed_thread(base_seed, t);
+                args[t].ws = &wss[t]; args[t].gb = &gb; args[t].mtx = &mtx;
+                start += cnt;
+                pthread_create(&tids[t], NULL, inc_thread_main, &args[t]);
+            }
+            for (int t = 0; t < T; t++) pthread_join(tids[t], NULL);
+        } else {
+            // Allocation/clone failed: fall back to one sequential range (owner scratch).
+            static IncWorkspace fb_ws;
+            inc_restart_range(m, ctx, cfg_c, shape, deterministic, temp_start, cooling,
+                              0, cfg->n_restarts, &fb_ws, &gb, NULL);
+        }
+        if (args)
+            for (int t = 0; t < T; t++)
+                if (args[t].ctx_copy.model_scratch) m->scratch_free(args[t].ctx_copy.model_scratch);
+        free(tids); free(args); free(wss);
+        pthread_mutex_destroy(&mtx);
+    }
 
     if (!gb.have) return 0.0;
     m->copy_state(cfg_c, &gb.state, out_best);

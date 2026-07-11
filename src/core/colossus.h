@@ -605,6 +605,23 @@ typedef struct CipherModel {
     //   to the caches and to cur_dec, advancing the current state's decryption to
     //   the just-accepted neighbour. Called only when the engine accepts the move.
     void (*commit_neighbor)(const SolverCtx *ctx, const SolverConfig *cfg_c, int *cur_dec);
+
+    // --- Optional per-thread scratch clone (enables -nthreads on the incremental
+    //     fast path). The incremental caches above live in ctx->model_scratch, a
+    //     single shared pointer, so restart-loop parallelism would race them. When a
+    //     model supplies BOTH hooks the incremental driver gives each worker its own
+    //     private scratch (a shallow ctx copy repointed at the clone), restoring the
+    //     restart split; leaving them NULL keeps that model single-threaded (verbatim
+    //     the old behaviour). Only the incremental driver consults these.
+    //
+    // scratch_clone: allocate a per-thread copy of ctx->model_scratch -- share the
+    //   read-only fields (built once before the search) but allocate fresh copies of
+    //   every buffer the search MUTATES (the live caches + per-call scratch). Returns
+    //   NULL on OOM (the driver then falls back to a single sequential range).
+    void *(*scratch_clone)(const SolverCtx *ctx);
+    // scratch_free: free a scratch returned by scratch_clone (only the per-thread
+    //   allocations it made; the shared read-only buffers belong to the owner).
+    void  (*scratch_free)(void *scratch);
 } CipherModel;
 
 
