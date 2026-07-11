@@ -101,71 +101,114 @@ double crib_score(int text[], int len, int crib_indices[], int crib_positions[],
 #endif
 }
 
+// Rolling big-endian window sum over `src[0..m-1]`. Kept as a static inline so ngram_score
+// can call it with COMPILE-TIME `ngram_size`/`alpha`/`top` for the common alphabets (25 for
+// the J-merged squares, 26 for the plain types), letting the compiler strength-reduce the
+// base multiplies and fully unroll the fixed-size init loop, and with runtime values for the
+// 27/36 alphabets. The arithmetic (and hence every packed index, gather, and addition order)
+// is identical either way -- bit-for-bit. (A software-prefetch variant of the loop-carried
+// gather was tried here and REJECTED: on the only path where it fires -- the memory-bound
+// quintgram table -- it measured ~5% SLOWER, because the recurrence already runs address
+// generation far enough ahead of the result-independent gathers to saturate memory-level
+// parallelism, so the extra look-ahead index arithmetic is pure overhead.)
+static inline double ngram_walk(const int * restrict src, int m,
+                                const float * restrict nd,
+                                int ngram_size, int alpha, int top) {
+    double score = 0.;
+    int n_windows = m - ngram_size + 1;
+    if (n_windows > 0) {
+        int index = 0;
+        for (int j = 0; j < ngram_size; j++)
+            index = index * alpha + src[j];
+        score += nd[index];
+
+        for (int i = 1; i < n_windows; i++) {
+            index = (index - src[i - 1] * top) * alpha + src[i + ngram_size - 1];
+            score += nd[index];
+        }
+    }
+    return score;
+}
+
 double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram_size) {
-    int index;
     double score = 0.;
 
-    // pow(g_alpha, ngram_size) is a positive constant for the whole run
-    // (ngram_size never changes), yet was previously recomputed via a libm pow()
-    // on EVERY score -- i.e. every hill-climber iteration. Memoize it. pow()
-    // returns the identical double for identical args, so the cached value equals
-    // the recomputed one bit-for-bit; the score is unchanged.
+    // pow(g_alpha, ngram_size) and top = g_alpha^(ngram_size-1) are positive constants
+    // for the whole run (g_alpha and ngram_size never change), yet were recomputed on
+    // EVERY score -- i.e. every hill-climber iteration (pow() via libm, top via a small
+    // loop). Memoize both, keyed on ngram_size (g_alpha is fixed per run, as the cached
+    // scale already assumes). The cached values equal the recomputed ones bit-for-bit,
+    // so the score is unchanged.
     static _Thread_local int cached_ngram_size = -1;
     static _Thread_local double scale = 0.;
+    static _Thread_local int cached_top = 1;
     if (ngram_size != cached_ngram_size) {
         // Legacy table entries are ~1/n_ngrams, so the historical g_alpha^ngram_size
         // factor brings the mean back to O(1). The log-prob table already holds O(1)
         // log10 values, so it needs no rescaling (scale = 1) -- the score is then a
         // mean log-probability, the AZDecrypt fitness.
         scale = g_ngram_logprob ? 1.0 : pow(g_alpha, ngram_size);
+        int t = 1;                      // g_alpha^(ngram_size-1)
+        for (int j = 0; j < ngram_size - 1; j++) t *= g_alpha;
+        cached_top = t;
         cached_ngram_size = ngram_size;
     }
+    const int top = cached_top;
 
-    // Compact the decrypted text to its LETTERS ONLY, dropping negative sentinels
-    // (spaces / punctuation carried through from the ciphertext). n-grams are then
-    // formed from CONSECUTIVE LETTERS, so a sentinel is transparent to the window
-    // ("THE MOST" -> THEMO, HEMOS, ...) rather than voiding every window that spans
-    // it. This is the fix for space-bearing transpositions: with a space every few
-    // characters the old "skip any window containing a sentinel" rule discarded
-    // almost every window, flattening the fitness landscape so the climber had no
-    // gradient (AZDecrypt-style solvers score the space as a symbol instead). Word-
-    // boundary (space-placement) signal is supplied separately by the dictionary
-    // word-coverage term (-weightword). The sentinel COUNT is invariant under a
-    // transposition (the same multiset is permuted), so `m` is constant across every
-    // candidate decrypt of a given cipher -- the normalisation below never changes
-    // which solution wins. When the text is all letters the compaction is the
-    // identity, `m == cipher_len`, and every step is bit-for-bit identical to the
-    // historical scorer (same indices, same additions, same order, same divisor).
-    static _Thread_local int letters[MAX_CIPHER_LENGTH];
-    int m = 0;
-    for (int i = 0; i < cipher_len; i++)
-        if (decrypted[i] >= 0) letters[m++] = decrypted[i];
-
-    // Rolling base-26 index over the compacted stream. The packed window index is
-    // BIG-endian idx_i = sum_{j} letters[i+j] * 26^(n-1-j) (position 0 = most
-    // significant), so advancing one position is a MULTIPLY, not a divide:
-    //   idx_{i+1} = (idx_i - letters[i]*26^(n-1)) * 26 + letters[i+n].
-    // Dropping the divide matters because idx is loop-carried (each window's index
-    // depends on the previous), so an integer division by the runtime variable
-    // g_alpha would serialize a ~20-cycle divide per window; the multiply is ~3.
-    // Bit-identical to the old little-endian packing: load_ngrams builds the table
-    // with the SAME convention (ngram_index_str), so every n-gram lands the SAME
-    // float at a different slot, and the per-window sum runs in the SAME order.
-    int n_windows = m - ngram_size + 1;
-    if (n_windows > 0) {
-        int top = 1;                    // g_alpha^(ngram_size-1)
-        for (int j = 0; j < ngram_size - 1; j++) top *= g_alpha;
-
-        index = 0;
-        for (int j = 0; j < ngram_size; j++)
-            index = index * g_alpha + letters[j];
-        score += ngram_data[index];
-
-        for (int i = 1; i < n_windows; i++) {
-            index = (index - letters[i - 1] * top) * g_alpha + letters[i + ngram_size - 1];
-            score += ngram_data[index];
-        }
+    // Source stream for the window walk. n-grams are formed from CONSECUTIVE LETTERS, so
+    // a negative sentinel (space / punctuation carried through from the ciphertext) must
+    // be transparent to the window ("THE MOST" -> THEMO, HEMOS, ...) rather than voiding
+    // every window that spans it -- the fix for space-bearing transpositions, where the
+    // old "skip any window containing a sentinel" rule discarded almost every window and
+    // flattened the gradient (AZDecrypt-style solvers score the space as a symbol; word-
+    // boundary signal is supplied separately by -weightword). When the cipher is all
+    // letters (g_score_no_sentinel, set once after decode) the compaction is the identity
+    // -- `m == cipher_len` and letters[i] == decrypted[i] -- so we score decrypted[] in
+    // place, saving an O(n) copy+branch pass per iteration; every index, addition, order
+    // and divisor is then bit-for-bit identical to compacting first. Otherwise compact to
+    // letters only. The sentinel COUNT is invariant under a transposition (the same
+    // multiset is permuted), so `m` is constant across every candidate decrypt of a given
+    // cipher and the normalisation below never changes which solution wins.
+    const int * restrict src;
+    int m;
+    if (g_score_no_sentinel) {
+        src = decrypted;
+        m = cipher_len;
+    } else {
+        static _Thread_local int letters[MAX_CIPHER_LENGTH];
+        int k = 0;
+        for (int i = 0; i < cipher_len; i++)
+            if (decrypted[i] >= 0) letters[k++] = decrypted[i];
+        src = letters;
+        m = k;
     }
+
+    // Rolling base-26 index over the stream. The packed window index is BIG-endian
+    // idx_i = sum_{j} src[i+j] * 26^(n-1-j) (position 0 = most significant), so advancing
+    // one position is a MULTIPLY, not a divide:
+    //   idx_{i+1} = (idx_i - src[i]*26^(n-1)) * 26 + src[i+n].
+    // Dropping the divide matters because idx is loop-carried (each window's index depends
+    // on the previous), so an integer division by the runtime variable g_alpha would
+    // serialize a ~20-cycle divide per window; the multiply is ~3. Bit-identical to the
+    // old little-endian packing: load_ngrams builds the table with the SAME convention
+    // (ngram_index_str), so every n-gram lands the SAME float at a different slot, and the
+    // per-window sum runs in the SAME order.
+    // The window walk is factored into ngram_walk (below) so the hot (g_alpha, ngram_size)
+    // pairs can be dispatched to a copy with the alphabet base and top digit as COMPILE-TIME
+    // constants: the compiler then strength-reduces the base multiplies into shift+add and
+    // fully unrolls the fixed-size init loop, shortening the loop-carried integer chain. The
+    // four specialised pairs are the ones the scoring-bound families actually use -- the
+    // J-merged squares (Playfair/Bifid/ADFGX/... all g_alpha == 25) and the plain 26-letter
+    // types -- at quadgram and quintgram sizes. The integer index is identical whether the
+    // multiply is an imul or a lea chain, so it is bit-for-bit identical to the generic path,
+    // which still handles the 27/36 alphabets and any other n-gram size.
+    const float * restrict nd = ngram_data;
+    if      (g_alpha == 25 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 25,  15625);
+    else if (g_alpha == 26 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 26,  17576);
+    else if (g_alpha == 25 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 25, 390625);
+    else if (g_alpha == 26 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 26, 456976);
+    else                                       score = ngram_walk(src, m, nd, ngram_size, g_alpha, top);
+
     int denom = m - ngram_size;
     score = (denom > 0) ? scale*score/denom : 0.0;
     return score;

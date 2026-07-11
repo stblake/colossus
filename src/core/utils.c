@@ -26,6 +26,14 @@ bool g_ngram_logprob = false;
 // clean English. Default false => the table and every existing solve are bit-identical.
 bool g_ngram_reverse = false;
 
+// Set true once (on the main thread, in solve_cipher, after decode_cipher) iff the
+// decoded cipher stream carries NO negative sentinels (spaces/punctuation) -- i.e. the
+// scored plaintext is all letters. When true, ngram_score skips its letters-only
+// compaction copy (the pass is the identity in that case) and scores the decrypt in
+// place -- bit-identical, but one fewer O(n) pass per hill-climb iteration. Default
+// false => the safe compaction path, byte-for-byte the historical scorer.
+bool g_score_no_sentinel = false;
+
 // Build the index<->char maps and the reindexed monogram table. `excluded` is a
 // string of letters to drop from the standard A..Z ordering (NULL/"" => full A..Z).
 void init_alphabet(const char *excluded) {

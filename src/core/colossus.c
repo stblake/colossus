@@ -1638,6 +1638,16 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     // distinct ciphertext symbols and emits one symbol id per position.
     int cipher_len = decode_cipher(ciphertext_str, cfg, cipher_indices, &symtab);
 
+    // Detect an all-letter cipher stream (no space/punctuation sentinels) so ngram_score
+    // can skip its letters-only compaction copy. Set on the main thread here, before any
+    // solver spawns workers, and only read during the search -- same publication guarantee
+    // as g_ngram_logprob. Re-evaluated per cipher (batch mode). The scored plaintext of an
+    // all-letter cipher never gains a sentinel (substitution decrypts into [0,g_alpha);
+    // transposition permutes the same multiset), so the flag stays valid for every solver.
+    g_score_no_sentinel = true;
+    for (int i = 0; i < cipher_len; i++)
+        if (cipher_indices[i] < 0) { g_score_no_sentinel = false; break; }
+
     // Process Cribs (Local to this cipher)
     if (strlen(cribtext_str) > 0) {
         if ((int)strlen(cribtext_str) != cipher_len) {
