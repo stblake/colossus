@@ -119,11 +119,11 @@ static void transmat_report_verbose(const SolverCtx *ctx, const SolverConfig *cc
     int buf[MAX_CIPHER_LENGTH];
     apply_transposition(cfg, ctx->cipher, ctx->cipher_len, st->aux[0], st->aux[1], st->aux[2], buf);
 
-    double elapsed = ((double) clock() - stats->start_time)/CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     double n_iter_per_sec = (elapsed > 0.) ? ((double) stats->n_iterations)/elapsed : 0.;
 
     printf("\n%.2f\t[sec]\n", elapsed);
-    printf("%.0fK\t[it/sec]\n", 1.e-3*n_iter_per_sec);
+    printf("%.0fK\t[it/sec/thread]\n", 1.e-3*n_iter_per_sec);
     printf("%d\t[restarts]\n", stats->n_restarts);
     printf("%d\t[backtracks]\n", stats->n_backtracks);
     printf("%d\t[slips]\n", stats->n_slips);

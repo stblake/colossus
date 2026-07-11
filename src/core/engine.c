@@ -112,7 +112,7 @@ static void inc_restart_range(const CipherModel *m, SolverCtx *ctx,
 
     EngineStats st;
     memset(&st, 0, sizeof st);
-    st.start_time = clock();
+    st.start_time = wall_time_sec();
 
     for (int rs = rs_begin; rs < rs_end && !done; rs++) {
         st.n_restarts = rs;
@@ -376,7 +376,7 @@ static void pso_restart_range(const CipherModel *m, SolverCtx *ctx,
 
     EngineStats st;
     memset(&st, 0, sizeof st);
-    st.start_time = clock();
+    st.start_time = wall_time_sec();
 
     for (int rs = rs_begin; rs < rs_end; rs++) {
         st.n_restarts = rs;
@@ -538,7 +538,7 @@ static void gen_restart_range(const CipherModel *m, SolverCtx *ctx,
 
     EngineStats st;
     memset(&st, 0, sizeof st);
-    st.start_time = clock();
+    st.start_time = wall_time_sec();
 
     for (int rs = rs_begin; rs < rs_end && !done; rs++) {
         st.n_restarts = rs;

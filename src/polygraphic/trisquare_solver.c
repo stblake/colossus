@@ -134,7 +134,7 @@ static void trisquare_report_verbose(const SolverCtx *ctx, const SolverConfig *c
     (void) cc; (void) decrypted;
     const TriSquareScratch *p = (const TriSquareScratch *) ctx->model_scratch;
     int g = p->grid_size;
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  score=%.4f  [%.1fs, %d restarts]\n", score, elapsed, stats->n_restarts);
     printf("  square 1:\n"); trisquare_print_grid(st->key, p->side);
     printf("  square 2:\n"); trisquare_print_grid(st->key + g, p->side);

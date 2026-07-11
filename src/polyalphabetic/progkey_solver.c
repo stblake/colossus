@@ -127,7 +127,7 @@ static void progkey_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
     (void) ctx; (void) cc; (void) decrypted;
     int P = st->aux[0];
     char kw[MAX_CYCLEWORD_LEN + 1]; progkey_key_string(st->cycleword, P, kw);
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  P=%d prog=%d keyword=%s score=%.4f  [%.1fs, %d restarts]\n",
         P, st->aux[1], kw, score, elapsed, stats->n_restarts);
     fflush(stdout);

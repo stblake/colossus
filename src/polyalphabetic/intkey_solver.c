@@ -307,7 +307,7 @@ static void ik_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
     int P = st->aux[0], strat = st->aux[1], interruptor = st->aux[2];
     char kw[MAX_CYCLEWORD_LEN + 1]; ik_key_string(st->cycleword, P, kw);
     char is[8]; ik_int_string(strat, interruptor, is);
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  P=%d scheme=%s interruptor=%s keyword=%s score=%.4f  [%.1fs, %d restarts]\n",
         P, ik_scheme_name(strat), is, kw, score, elapsed, stats->n_restarts);
     fflush(stdout);

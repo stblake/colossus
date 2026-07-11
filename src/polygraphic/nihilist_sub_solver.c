@@ -240,7 +240,7 @@ static void nih_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
         const SolverState *st, double score, int *decrypted, const EngineStats *stats) {
     const NihilistSubScratch *a = (const NihilistSubScratch *) ctx->model_scratch;
     int p = st->aux[0];
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  period %d, score=%.4f  [%.1fs, %d restarts]\n", p, score, elapsed, stats->n_restarts);
     nih_print_square(st->key, a->side);
     (void) cc; (void) decrypted;

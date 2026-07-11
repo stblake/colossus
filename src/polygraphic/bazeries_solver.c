@@ -132,7 +132,7 @@ static void baz_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
     (void) ctx; (void) cc; (void) decrypted;
     long N = baz_state_number(st);
     char sq[BAZERIES_GRID + 1]; baz_square_string(N, sq);
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  number=%ld (D=%d), score=%.4f  [%.1fs, %d restarts]\n    square=%s\n",
         N, st->aux[0], score, elapsed, stats->n_restarts, sq);
     fflush(stdout);

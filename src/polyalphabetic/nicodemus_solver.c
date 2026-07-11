@@ -130,7 +130,7 @@ static void nico_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
     nico_decrypt_core(ctx, P, H, st->key, a->variant, shifts, plain);
     char keyword[MAX_COLS + 1], orderstr[4 * MAX_COLS];
     nico_key_strings(shifts, st->key, P, keyword, orderstr);
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  P=%d H=%d keyword=%s order=[%s] score=%.4f  [%.1fs, %d restarts]\n",
         P, H, keyword, orderstr, score, elapsed, stats->n_restarts);
     fflush(stdout);

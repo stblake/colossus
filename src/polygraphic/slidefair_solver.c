@@ -128,7 +128,7 @@ static void slidefair_report_verbose(const SolverCtx *ctx, const SolverConfig *c
     const SlidefairScratch *a = (const SlidefairScratch *) ctx->model_scratch;
     int P = st->aux[0];
     char kw[MAX_COLS + 1]; slidefair_key_string(st->cycleword, P, kw);
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  %s P=%d keyword=%s score=%.4f  [%.1fs, %d restarts]\n",
         slidefair_variant_name(a->type), P, kw, score, elapsed, stats->n_restarts);
     fflush(stdout);

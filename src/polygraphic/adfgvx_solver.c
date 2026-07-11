@@ -197,7 +197,7 @@ static void adfgvx_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
         const SolverState *st, double score, int *decrypted, const EngineStats *stats) {
     (void) cc; (void) decrypted;
     const AdfgvxScratch *a = (const AdfgvxScratch *) ctx->model_scratch;
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  K=%d dir=%s score=%.4f ioc=%.4f  [%.1fs, %d restarts]\n",
         st->aux[0], st->aux[1] == COL_READ_BT ? "bt" : "tb", score,
         index_of_coincidence(decrypted, a->n), elapsed, stats->n_restarts);

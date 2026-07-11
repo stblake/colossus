@@ -297,7 +297,7 @@ static void gm_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
     char alpha[GM_SIGMA + 1], primer[GROMARK_MAX_PRIMER + 1];
     gm_alpha_string(st->key, alpha);
     gm_primer_string(&a->primers[cfgidx * GROMARK_MAX_PRIMER], P, primer);
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  period %d, primer %s, score=%.4f  [%.1fs, %d restarts]\n    alphabet=%s\n",
         P, primer, score, elapsed, stats->n_restarts, alpha);
     (void) cc; (void) decrypted;
@@ -447,7 +447,7 @@ static void gmkw_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
     (void) ctx; (void) cc; (void) decrypted;
     int P = st->aux[0];
     char kw[GROMARK_MAX_PRIMER + 1]; gmkw_kw_string(st->key, P, kw);
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  period %d, keyword %s, score=%.4f  [%.1fs, %d restarts]\n",
         P, kw, score, elapsed, stats->n_restarts);
     fflush(stdout);

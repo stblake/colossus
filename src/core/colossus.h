@@ -533,8 +533,25 @@ typedef struct {
     int    n_backtracks;
     int    n_slips;
     int    n_contradictions;
-    clock_t start_time;
+    // WALL-CLOCK start (monotonic seconds), NOT CPU clock(): a report divides
+    // n_iterations by the elapsed time, and under -nthreads>1 clock() sums the CPU
+    // time of ALL workers (~N x wall), which would deflate the per-thread it/sec by
+    // ~N. Wall time keeps the figure the true PER-THREAD rate at any thread count.
+    double start_time;
 } EngineStats;
+
+// Monotonic wall-clock seconds (arbitrary epoch). Used only for the -verbose
+// throughput readout; see EngineStats.start_time.
+static inline double wall_time_sec(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double) ts.tv_sec + 1.e-9 * (double) ts.tv_nsec;
+}
+
+// Wall-clock seconds elapsed since a stats block's start_time was stamped.
+static inline double engine_elapsed_sec(const EngineStats *stats) {
+    return wall_time_sec() - stats->start_time;
+}
 
 // The per-cipher-type model. Optional hooks may be NULL.
 typedef struct CipherModel {

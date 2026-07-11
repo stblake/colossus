@@ -521,11 +521,11 @@ static void polyalpha_report_verbose(const SolverCtx *ctx, const SolverConfig *c
     double ioc = index_of_coincidence(buf, cipher_len);
     double chi = chi_squared(buf, cipher_len);
     double entropy_score = entropy(buf, cipher_len);
-    double elapsed = ((double) clock() - stats->start_time)/CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     double n_iter_per_sec = ((double) stats->n_iterations)/elapsed;
 
     printf("\n%.2f\t[sec]\n", elapsed);
-    printf("%.0fK\t[it/sec]\n", 1.e-3*n_iter_per_sec);
+    printf("%.0fK\t[it/sec/thread]\n", 1.e-3*n_iter_per_sec);
     printf("%d\t[backtracks]\n", stats->n_backtracks);
     printf("%d\t[restarts]\n", stats->n_restarts);
     printf("%d\t[slips]\n", stats->n_slips);

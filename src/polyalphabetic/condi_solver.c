@@ -110,7 +110,7 @@ static void condi_report_verbose(const SolverCtx *ctx, const SolverConfig *cc,
         const SolverState *st, double score, int *decrypted, const EngineStats *stats) {
     (void) ctx; (void) cc; (void) decrypted;
     char alpha[CONDI_ALPHA + 1]; condi_alpha_string(st->key, alpha);
-    double elapsed = ((double) clock() - stats->start_time) / CLOCKS_PER_SEC;
+    double elapsed = engine_elapsed_sec(stats);
     printf("\n  starter %d, score=%.4f  [%.1fs, %d restarts]\n    alphabet=%s\n",
         st->aux[0], score, elapsed, stats->n_restarts, alpha);
     fflush(stdout);
