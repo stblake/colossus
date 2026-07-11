@@ -2,9 +2,13 @@
 #   makefile
 #
 
-CC=gcc -Wall -O3 -funroll-loops -pthread
+# Build with Homebrew GCC (gcc-16), not Apple clang's `gcc` shim. gcc-16 is the
+# reference toolchain (matches the Apple Silicon dev box); it is stricter and
+# surfaces warnings clang hides. On Apple Silicon it is /opt/homebrew/bin/gcc-16,
+# on Intel /usr/local/bin/gcc-16 -- both on PATH as `gcc-16`. `brew install gcc`.
+CC=gcc-16 -Wall -O3 -funroll-loops -pthread
 
-# CC=gcc -Wall -lm -g -O0
+# CC=gcc-16 -Wall -lm -g -O0
 
 # Sources live under src/<cipher-class>/. All local #includes are flat
 # (#include "foo.h"), so the compiler finds every header via these -I paths

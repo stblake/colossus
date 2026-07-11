@@ -18,4 +18,4 @@
     -ngramsize 5 -ngramfile ../../english_quintgrams.txt -logprob \
     -nrestarts 600 -nhillclimbs 50000 \
     -inittemp 0.015 -weightmono 1.4 \
-    -backtrackprob 0.15 -seed 1 -verbose
+    -backtrackprob 0.15 -verbose

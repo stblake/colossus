@@ -283,24 +283,32 @@ int route_cells(int R, int C, int len, int route_id, int cells[]) {
         case 2: { // clockwise spiral inward from top-left
             int top = 0, bottom = R - 1, left = 0, right = C - 1;
             while (top <= bottom && left <= right) {
-                for (int c = left; c <= right; c++)  EMIT(top * C + c);     top++;
-                for (int r = top; r <= bottom; r++)  EMIT(r * C + right);   right--;
+                for (int c = left; c <= right; c++)  EMIT(top * C + c);
+                top++;
+                for (int r = top; r <= bottom; r++)  EMIT(r * C + right);
+                right--;
                 if (top <= bottom)
-                    for (int c = right; c >= left; c--) EMIT(bottom * C + c); bottom--;
+                    for (int c = right; c >= left; c--) EMIT(bottom * C + c);
+                bottom--;
                 if (left <= right)
-                    for (int r = bottom; r >= top; r--) EMIT(r * C + left);   left++;
+                    for (int r = bottom; r >= top; r--) EMIT(r * C + left);
+                left++;
             }
             break;
         }
         case 3: { // counter-clockwise spiral inward from top-left
             int top = 0, bottom = R - 1, left = 0, right = C - 1;
             while (top <= bottom && left <= right) {
-                for (int r = top; r <= bottom; r++)  EMIT(r * C + left);    left++;
-                for (int c = left; c <= right; c++)  EMIT(bottom * C + c);  bottom--;
+                for (int r = top; r <= bottom; r++)  EMIT(r * C + left);
+                left++;
+                for (int c = left; c <= right; c++)  EMIT(bottom * C + c);
+                bottom--;
                 if (left <= right)
-                    for (int r = bottom; r >= top; r--) EMIT(r * C + right); right--;
+                    for (int r = bottom; r >= top; r--) EMIT(r * C + right);
+                right--;
                 if (top <= bottom)
-                    for (int c = right; c >= left; c--) EMIT(top * C + c);   top++;
+                    for (int c = right; c >= left; c--) EMIT(top * C + c);
+                top++;
             }
             break;
         }

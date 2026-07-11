@@ -197,16 +197,25 @@ double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram
     // pairs can be dispatched to a copy with the alphabet base and top digit as COMPILE-TIME
     // constants: the compiler then strength-reduces the base multiplies into shift+add and
     // fully unrolls the fixed-size init loop, shortening the loop-carried integer chain. The
-    // four specialised pairs are the ones the scoring-bound families actually use -- the
-    // J-merged squares (Playfair/Bifid/ADFGX/... all g_alpha == 25) and the plain 26-letter
-    // types -- at quadgram and quintgram sizes. The integer index is identical whether the
-    // multiply is an imul or a lea chain, so it is bit-for-bit identical to the generic path,
-    // which still handles the 27/36 alphabets and any other n-gram size.
+    // specialised pairs are the ones the scoring-bound families actually use -- the J-merged
+    // squares (Playfair/Bifid/ADFGX/... all g_alpha == 25), the plain 26-letter types, the
+    // 27-symbol cube/grid types (Trifid/Digrafid) and the 36-symbol ADFGVX -- at quadgram
+    // and quintgram sizes. The integer index is identical whether the multiply is an imul or
+    // a lea chain, so it is bit-for-bit identical to the generic path, which still handles any
+    // other alphabet size or n-gram order. (g_alpha==36 quintgram is intentionally NOT
+    // specialised: a base-36 quintgram table is 60M entries / 240MB and the codebase avoids
+    // it.) NOTE: once the compact-shadow table is armed (large tables only, see below), the
+    // 27/36 pairs whose float table exceeds the shadow threshold take the shadow path instead
+    // -- these float specialisations then serve the small-table (27^4) case and the
+    // shadow-disabled fallback.
     const float * restrict nd = ngram_data;
     if      (g_alpha == 25 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 25,  15625);
     else if (g_alpha == 26 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 26,  17576);
     else if (g_alpha == 25 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 25, 390625);
     else if (g_alpha == 26 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 26, 456976);
+    else if (g_alpha == 27 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 27,  19683);
+    else if (g_alpha == 27 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 27, 531441);
+    else if (g_alpha == 36 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 36,  46656);
     else                                       score = ngram_walk(src, m, nd, ngram_size, g_alpha, top);
 
     int denom = m - ngram_size;
