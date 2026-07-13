@@ -156,6 +156,7 @@ static void progkey_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, n);
     printf("\n");
+    print_solution_check(decrypted, n);
     print_spaces_line(g_spaces_table, decrypted, n);
     printf("%s\n", ctx->cribtext);
 

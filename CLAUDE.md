@@ -198,6 +198,12 @@ Substitution:
   **every** solver. Steers score-driven keys most under `-stochasticcycle`. Default off ⇒
   bit-identical.
 - `-crib`: fixed crib pinned to absolute cipher positions (blends in `state_score`).
+- `-check-solution-file <file>`: known-plaintext solution, pre-loaded once (uppercased,
+  whitespace stripped) into `g_check_solution`. `print_solution_check()` (utils.c) is
+  called right alongside every solver's `print_text(decrypted, len)` — both the
+  `-verbose` best-improvement dialog and the final report — diffing the candidate
+  letter-by-letter (matches print as-is, mismatches as `.`) plus a `NN.NN% correct`
+  line. Purely a reporting aid (never touches scoring). Default off ⇒ bit-identical.
 - `-method shotgun|anneal|pso`: override the model's default search shape (below).
 - `-nthreads N` (default 1): parallelize the restart loop across N pthreads (splits
   `-nrestarts`, ~N× faster). N=1 is the original sequential path, **bit-identical**; N>1

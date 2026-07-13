@@ -282,6 +282,7 @@ static void sc_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(g_sc_decode, m);
     printf("\n");
+    print_solution_check(g_sc_decode, m);
     print_spaces_line(g_spaces_table, g_sc_decode, m);
     printf("%s\n", ctx->cribtext);
 

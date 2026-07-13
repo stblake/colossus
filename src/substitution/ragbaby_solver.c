@@ -139,6 +139,7 @@ static void ragbaby_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, L);
     printf("\n");
+    print_solution_check(decrypted, L);
     print_spaces_line(g_spaces_table, decrypted, L);
     printf("%s\n", ctx->cribtext);
 

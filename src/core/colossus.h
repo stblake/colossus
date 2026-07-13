@@ -443,6 +443,11 @@ typedef struct {
     int  spaces_ngram_size;
     char spaces_ngram_file[MAX_FILENAME_LEN];
 
+    // -check-solution-file: known-plaintext solution, pre-loaded and diffed against every
+    // reported candidate (see load_check_solution()/print_solution_check() in utils.c).
+    bool check_solution_present;
+    char check_solution_file[MAX_FILENAME_LEN];
+
 } ColossusConfig;
 
 typedef struct {
@@ -1184,6 +1189,10 @@ void vec_print(int vec[], int len);
 void print_text(int indices[], int len);
 void ord(char *text, int indices[]);
 
+// -check-solution-file: load a known-plaintext solution once in main(), uppercased with
+// all whitespace stripped, into g_check_solution/g_check_solution_len (see below).
+void load_check_solution(const char *filename, bool verbose);
+
 // Decode a raw ciphertext string into integer indices, returning the index count.
 // LETTER mode (cfg->cipher_type != HOMOPHONIC and no -delimiter): byte-for-byte ord()
 // -- one index per character, A..Z -> 0..g_alpha-1, everything else a negative
@@ -1226,6 +1235,20 @@ extern SpacesNgramTable *g_spaces_table;   // loaded once in main() iff -spaces;
 // and prints it as a labelled "with spaces: ..." line; a no-op otherwise. Called once at every
 // solver's final report, right alongside its print_text(decrypted, len) call.
 void print_spaces_line(const SpacesNgramTable *tbl, int indices[], int len);
+
+// -check-solution-file: known plaintext to diff every reported candidate against (see
+// load_check_solution() / print_solution_check() in utils.c). g_check_solution holds it
+// uppercased with whitespace stripped; g_check_solution_len == 0 => off (no file given, or
+// it failed to load).
+#define MAX_CHECK_SOLUTION_LEN MAX_CIPHER_LENGTH
+extern char g_check_solution[MAX_CHECK_SOLUTION_LEN + 1];
+extern int  g_check_solution_len;
+// If g_check_solution_len > 0, diffs indices[0..len-1] (print_text() convention) against it
+// letter-by-letter over the shared prefix: prints a line with the matching letter at each
+// position that agrees and '.' where it doesn't, then a "NN.NN% correct" line. No-op
+// otherwise. Call right after any print_text(decrypted, len) that shows a candidate or final
+// plaintext (verbose best-improvement dialog and the final report alike).
+void print_solution_check(int indices[], int len);
 void init_alphabet(const char *excluded);          // (re)build the maps; NULL => full A..Z
 // Build the 27-symbol Trifid alphabet: A..Z (0..25) plus TRIFID_EXTRA_CHAR ('+') at
 // index 26, so a 3x3x3 cube has exactly 27 cells. Unlike init_alphabet this registers a

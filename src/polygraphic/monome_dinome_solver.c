@@ -403,7 +403,9 @@ static void md_report(const SolverCtx *ctx, const SolverConfig *cc,
     md_print_digits(a->digits, C);
     printf("\n");
     print_text(g_md_decode, m);
-    printf("\n%s\n", ctx->cribtext);
+    printf("\n");
+    print_solution_check(g_md_decode, m);
+    printf("%s\n", ctx->cribtext);
 
     if (ctx->result) {
         ctx->result->solved = true;

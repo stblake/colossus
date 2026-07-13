@@ -270,6 +270,9 @@ void init_config(ColossusConfig *cfg) {
     cfg->spaces_ngram_size = 0;
     cfg->spaces_ngram_file[0] = '\0';
 
+    cfg->check_solution_present = false;
+    cfg->check_solution_file[0] = '\0';
+
     cfg->ciphertext_keyword_len = 5;
     cfg->plaintext_keyword_len = 5;
     cfg->ciphertext_max_keyword_len = 12;
@@ -611,6 +614,12 @@ static void print_help(const char *prog) {
 "                          <n>-character window of A..Z/' ' followed by its corpus\n"
 "                          frequency, e.g. \"AAA A 1264\" for order 5.\n"
 "\n"
+"  -check-solution-file <file>  Known-plaintext solution, pre-loaded and uppercased with\n"
+"                          whitespace stripped. Every reported candidate (-verbose best-\n"
+"                          improvements and the final report) is diffed against it letter\n"
+"                          by letter: matching letters print as-is, mismatches as '.',\n"
+"                          followed by a \"NN.NN%% correct\" line.               [off]\n"
+"\n"
 "INPUT / OUTPUT\n"
 "  -multiline              Read the whole -cipher file, concatenating lines into one\n"
 "                          symbol stream (e.g. a homophonic grid).           [off]\n"
@@ -834,6 +843,11 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-spacesngramfile") == 0) {
             strcpy(cfg.spaces_ngram_file, argv[++i]);
             printf("-spacesngramfile %s\n", cfg.spaces_ngram_file);
+        } else if (strcmp(argv[i], "-check-solution-file") == 0) {
+            cfg.check_solution_present = true;
+            strncpy(cfg.check_solution_file, argv[++i], MAX_FILENAME_LEN - 1);
+            cfg.check_solution_file[MAX_FILENAME_LEN - 1] = '\0';
+            printf("-check-solution-file %s\n", cfg.check_solution_file);
         } else if (strcmp(argv[i], "-excludeletter") == 0) {
             // Drop one (or more) letters from the alphabet, shrinking it to an
             // N<26 letter alphabet with mod-N arithmetic. E.g. -excludeletter P
@@ -1504,6 +1518,12 @@ int main(int argc, char **argv) {
     if (cfg.spaces_present) {
         g_spaces_table = load_spaces_ngrams(cfg.spaces_ngram_file, cfg.spaces_ngram_size, cfg.verbose);
         if (!g_spaces_table) printf("-spaces: table failed to load, -spaces will have no effect\n");
+    }
+
+    // -check-solution-file: load once, up front, so every solver's verbose and final
+    // report can call print_solution_check() for free (see colossus.h/utils.c).
+    if (cfg.check_solution_present) {
+        load_check_solution(cfg.check_solution_file, cfg.verbose);
     }
 
     if (cfg.dictionary_present) {
