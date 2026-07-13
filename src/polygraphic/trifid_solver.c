@@ -204,6 +204,7 @@ static void trifid_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, len);
     printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, len);
     printf("%s\n", ctx->cribtext);
 
     printf("\nrecovered %dx%dx%d cube (cell major):\n", side, side, side);

@@ -253,6 +253,7 @@
 #include "morbit_solver.h"
 #include "straddling_checkerboard_solver.h"
 #include "ragbaby_solver.h"
+#include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
 
@@ -263,6 +264,10 @@ void init_config(ColossusConfig *cfg) {
     cfg->n_hill_climbs = 1000;
     cfg->n_restarts = 1;
     cfg->n_threads = 1;
+
+    cfg->spaces_present = false;
+    cfg->spaces_ngram_size = 0;
+    cfg->spaces_ngram_file[0] = '\0';
 
     cfg->ciphertext_keyword_len = 5;
     cfg->plaintext_keyword_len = 5;
@@ -594,6 +599,17 @@ static void print_help(const char *prog) {
 "  -ngramsize <n>          N-gram order for scoring (typically 4, or 5 with -logprob).\n"
 "  -ngramfile <file>       N-gram frequency table (e.g. english_quadgrams.txt).\n"
 "\n"
+"READABILITY (-spaces)\n"
+"  -spaces                 After the best plaintext for each report is found, run an\n"
+"                          exact Viterbi word-segmentation pass and also print a\n"
+"                          \"with spaces: ...\" line. Requires -spacesngramsize and\n"
+"                          -spacesngramfile.                                  [off]\n"
+"  -spacesngramsize <n>    Order of the space-inclusive n-gram table (chars, over the\n"
+"                          27-symbol A..Z + ' ' alphabet -- NOT a word count).\n"
+"  -spacesngramfile <file> Space-inclusive n-gram frequency table: each line is an\n"
+"                          <n>-character window of A..Z/' ' followed by its corpus\n"
+"                          frequency, e.g. \"AAA A 1264\" for order 5.\n"
+"\n"
 "INPUT / OUTPUT\n"
 "  -multiline              Read the whole -cipher file, concatenating lines into one\n"
 "                          symbol stream (e.g. a homophonic grid).           [off]\n"
@@ -808,6 +824,15 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-ngramfile") == 0) {
             strcpy(cfg.ngram_file, argv[++i]);
             printf("-ngramfile %s\n", cfg.ngram_file);
+        } else if (strcmp(argv[i], "-spaces") == 0) {
+            cfg.spaces_present = true;
+            printf("-spaces\n");
+        } else if (strcmp(argv[i], "-spacesngramsize") == 0) {
+            cfg.spaces_ngram_size = atoi(argv[++i]);
+            printf("-spacesngramsize %d\n", cfg.spaces_ngram_size);
+        } else if (strcmp(argv[i], "-spacesngramfile") == 0) {
+            strcpy(cfg.spaces_ngram_file, argv[++i]);
+            printf("-spacesngramfile %s\n", cfg.spaces_ngram_file);
         } else if (strcmp(argv[i], "-excludeletter") == 0) {
             // Drop one (or more) letters from the alphabet, shrinking it to an
             // N<26 letter alphabet with mod-N arithmetic. E.g. -excludeletter P
@@ -1461,6 +1486,14 @@ int main(int argc, char **argv) {
     // --- Resource Loading ---
 
     shared.ngram_data = load_ngrams(cfg.ngram_file, cfg.ngram_size, cfg.verbose);
+
+    // -spaces: load the space-inclusive n-gram table once, up front (not per candidate), so
+    // every solver's final report can call print_spaces_line() for free. g_spaces_table stays
+    // NULL (a no-op at every call site) if -spaces wasn't given or the table failed to load.
+    if (cfg.spaces_present) {
+        g_spaces_table = load_spaces_ngrams(cfg.spaces_ngram_file, cfg.spaces_ngram_size, cfg.verbose);
+        if (!g_spaces_table) printf("-spaces: table failed to load, -spaces will have no effect\n");
+    }
 
     if (cfg.dictionary_present) {
         load_dictionary(cfg.dictionary_file, &shared.dict, &shared.n_dict_words, &shared.max_dict_word_len, cfg.verbose);

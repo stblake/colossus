@@ -228,6 +228,7 @@ static void columnar_model_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, cipher_len);
     printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, cipher_len);
     printf("%s\n", cribtext_str);
 
     if (PARTIAL_CRIB_MATCH && n_cribs > 0) {

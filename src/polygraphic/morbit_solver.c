@@ -118,7 +118,9 @@ void solve_morbit(char *ciphertext_str, char *cribtext_str,
         score, n_words_found, nv, nt, keystr, elapsed);
     printf("%s\n", cipherstr);
     print_text(best_pt, n);
-    printf("\n%s\n", cribtext_str ? cribtext_str : "");
+    printf("\n");
+    print_spaces_line(g_spaces_table, best_pt, n);
+    printf("%s\n", cribtext_str ? cribtext_str : "");
 
     if (result) {
         result->solved = true;

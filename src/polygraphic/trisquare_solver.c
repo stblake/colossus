@@ -175,6 +175,7 @@ static void trisquare_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, n);
     printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, n);
 
     printf("\nrecovered square 1 (row major):\n");
     trisquare_print_grid(st->key, side);
