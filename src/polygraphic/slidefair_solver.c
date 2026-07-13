@@ -156,7 +156,9 @@ static void slidefair_report(const SolverCtx *ctx, const SolverConfig *cc,
     print_cipher(ctx->cipher, n, NULL);
     printf("\n");
     print_text(decrypted, n);
-    printf("\n%s\n", ctx->cribtext);
+    printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, n);
+    printf("%s\n", ctx->cribtext);
 
     if (ctx->result) {
         ctx->result->solved = true;

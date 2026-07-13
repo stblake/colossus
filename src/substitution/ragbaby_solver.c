@@ -138,7 +138,9 @@ static void ragbaby_report(const SolverCtx *ctx, const SolverConfig *cc,
     print_cipher(ctx->cipher, L, NULL);
     printf("\n");
     print_text(decrypted, L);
-    printf("\n%s\n", ctx->cribtext);
+    printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, L);
+    printf("%s\n", ctx->cribtext);
 
     if (ctx->result) {
         ctx->result->solved = true;

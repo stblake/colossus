@@ -436,6 +436,13 @@ typedef struct {
     char delimiter;
     bool delimiter_present;
 
+    // -spaces: post-decrypt readability pass (see spaces.c/.h). spaces_present enables it;
+    // the n-gram order/file mirror -ngramsize/-ngramfile but over the space-inclusive
+    // {A..Z,' '} alphabet used to insert spaces into the recovered plaintext.
+    bool spaces_present;
+    int  spaces_ngram_size;
+    char spaces_ngram_file[MAX_FILENAME_LEN];
+
 } ColossusConfig;
 
 typedef struct {
@@ -1209,6 +1216,16 @@ extern int  g_alpha;              // runtime alphabet size (<= ALPHABET_SIZE)
 extern int  g_char_to_idx[128];   // ASCII (upper) -> alphabet index, or -1 if absent
 extern char g_idx_to_char_arr[MAX_ALPHABET_SIZE + 1];  // alphabet index -> char (room for 27)
 extern double g_monograms[MAX_ALPHABET_SIZE];          // English monogram freqs, reindexed to runtime alphabet
+
+// -spaces (see spaces.h/.c). Opaque type forward-declared here (not spaces.h-included) so
+// every solver's report path can call print_spaces_line() without depending on the module
+// header; spaces.h carries the rest of the API (loading, freeing).
+typedef struct SpacesNgramTable SpacesNgramTable;
+extern SpacesNgramTable *g_spaces_table;   // loaded once in main() iff -spaces; NULL => off
+// If g_spaces_table is non-NULL, segments indices[0..len-1] (same convention as print_text())
+// and prints it as a labelled "with spaces: ..." line; a no-op otherwise. Called once at every
+// solver's final report, right alongside its print_text(decrypted, len) call.
+void print_spaces_line(const SpacesNgramTable *tbl, int indices[], int len);
 void init_alphabet(const char *excluded);          // (re)build the maps; NULL => full A..Z
 // Build the 27-symbol Trifid alphabet: A..Z (0..25) plus TRIFID_EXTRA_CHAR ('+') at
 // index 26, so a 3x3x3 cube has exactly 27 cells. Unlike init_alphabet this registers a

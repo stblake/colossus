@@ -277,7 +277,9 @@ static void nih_report(const SolverCtx *ctx, const SolverConfig *cc,
     nih_print_numbers(a->values, n);
     printf("\n");
     print_text(decrypted, n);
-    printf("\n%s\n", ctx->cribtext);
+    printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, n);
+    printf("%s\n", ctx->cribtext);
 
     printf("\nrecovered %dx%d square (row major):\n", side, side);
     nih_print_square(st->key, side);

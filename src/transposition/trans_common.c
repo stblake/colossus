@@ -33,6 +33,7 @@ void report_transposition(ColossusConfig *cfg, SharedData *shared,
     printf("\n");
     print_text(best_decrypted, cipher_len);
     printf("\n");
+    print_spaces_line(g_spaces_table, best_decrypted, cipher_len);
     printf("%s\n", cribtext_str);
 
     if (PARTIAL_CRIB_MATCH && n_cribs > 0) {

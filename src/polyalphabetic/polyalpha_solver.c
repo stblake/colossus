@@ -650,6 +650,7 @@ void report_solution(ColossusConfig *cfg, char *cribtext_str,
     }
     print_text(res->decrypted, cipher_len);
     printf("\n");
+    print_spaces_line(g_spaces_table, res->decrypted, cipher_len);
     printf("%s\n", cribtext_str);
 
     if (PARTIAL_CRIB_MATCH && n_cribs > 0) {

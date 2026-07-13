@@ -159,6 +159,7 @@ static void hill_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, len);
     printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, len);
     printf("%s\n", ctx->cribtext);
 
     printf("\nrecovered %dx%d decryption matrix (row major, mod 26):\n", k, k);

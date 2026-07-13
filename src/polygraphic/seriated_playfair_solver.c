@@ -159,6 +159,7 @@ static void serpf_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, len);
     printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, len);
     printf("%s\n", ctx->cribtext);
 
     printf("\nrecovered 5x5 grid (row major), seriation period %d:\n", P);

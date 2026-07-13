@@ -169,7 +169,9 @@ static void fracmorse_report(const SolverCtx *ctx, const SolverConfig *cc,
     print_cipher(ctx->cipher, C, NULL);
     printf("\n");
     print_text(g_fm_decode, m);
-    printf("\n%s\n", ctx->cribtext);
+    printf("\n");
+    print_spaces_line(g_spaces_table, g_fm_decode, m);
+    printf("%s\n", ctx->cribtext);
 
     if (ctx->result) {
         ctx->result->solved = true;

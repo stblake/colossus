@@ -234,6 +234,7 @@ static void adfgvx_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, n);
     printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, n);
 
     printf("\nrecovered %dx%d square (row major):\n", side, side);
     adfgvx_print_square(st->key, side);

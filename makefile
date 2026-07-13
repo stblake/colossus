@@ -23,7 +23,7 @@ GRAPH=$(SRC)/polygraphic
 SUBST=$(SRC)/substitution
 
 # Cipher primitives (decrypt math, shared by the solvers and the unit tests).
-PRIMITIVES=$(CORE)/utils.c $(CORE)/parse.c $(CORE)/dict.c $(TRANS)/transpositions.c $(TRANS)/period_column.c $(CORE)/perioc.c $(POLY)/quagmire.c $(POLY)/vigenere.c $(POLY)/gronsfeld.c $(POLY)/gromark.c $(POLY)/nicodemus.c $(POLY)/porta.c $(POLY)/beaufort.c $(POLY)/autokey.c $(CORE)/optimal_cycleword.c $(GRAPH)/playfair.c $(GRAPH)/bifid.c $(GRAPH)/trifid.c $(GRAPH)/hill.c $(GRAPH)/phillips.c $(GRAPH)/twosquare.c $(GRAPH)/foursquare.c $(GRAPH)/adfgvx.c $(GRAPH)/nihilist_sub.c $(GRAPH)/bazeries.c $(GRAPH)/portax.c $(POLY)/progkey.c $(GRAPH)/slidefair.c $(GRAPH)/seriated_playfair.c $(GRAPH)/digrafid.c $(GRAPH)/cm_bifid.c $(GRAPH)/trisquare.c $(POLY)/intkey.c $(POLY)/condi.c $(GRAPH)/fracmorse.c $(GRAPH)/pollux.c $(GRAPH)/morbit.c $(GRAPH)/straddling_checkerboard.c $(GRAPH)/monome_dinome.c $(SUBST)/ragbaby.c
+PRIMITIVES=$(CORE)/utils.c $(CORE)/parse.c $(CORE)/dict.c $(CORE)/spaces.c $(TRANS)/transpositions.c $(TRANS)/period_column.c $(CORE)/perioc.c $(POLY)/quagmire.c $(POLY)/vigenere.c $(POLY)/gronsfeld.c $(POLY)/gromark.c $(POLY)/nicodemus.c $(POLY)/porta.c $(POLY)/beaufort.c $(POLY)/autokey.c $(CORE)/optimal_cycleword.c $(GRAPH)/playfair.c $(GRAPH)/bifid.c $(GRAPH)/trifid.c $(GRAPH)/hill.c $(GRAPH)/phillips.c $(GRAPH)/twosquare.c $(GRAPH)/foursquare.c $(GRAPH)/adfgvx.c $(GRAPH)/nihilist_sub.c $(GRAPH)/bazeries.c $(GRAPH)/portax.c $(POLY)/progkey.c $(GRAPH)/slidefair.c $(GRAPH)/seriated_playfair.c $(GRAPH)/digrafid.c $(GRAPH)/cm_bifid.c $(GRAPH)/trisquare.c $(POLY)/intkey.c $(POLY)/condi.c $(GRAPH)/fracmorse.c $(GRAPH)/pollux.c $(GRAPH)/morbit.c $(GRAPH)/straddling_checkerboard.c $(GRAPH)/monome_dinome.c $(SUBST)/ragbaby.c
 
 # Cipher-agnostic core + per-cipher-type solver modules (split out of colossus.c).
 SOLVERS=$(CORE)/engine.c $(CORE)/scoring.c $(TRANS)/trans_common.c $(POLY)/polyalpha_solver.c $(POLY)/gromark_solver.c $(POLY)/nicodemus_solver.c $(TRANS)/transmatrix_solver.c $(TRANS)/permutation_solver.c $(TRANS)/columnar_solver.c $(TRANS)/columnar_track_solver.c $(TRANS)/route_chain_solver.c $(TRANS)/tile_solver.c $(TRANS)/period_column_solver.c $(TRANS)/period_column_space_solver.c $(TRANS)/double_transposition_solver.c $(TRANS)/railfence_solver.c $(TRANS)/route_solver.c $(TRANS)/amsco_solver.c $(TRANS)/myszkowski_solver.c $(TRANS)/redefence_solver.c $(TRANS)/cadenus_solver.c $(TRANS)/nihilist_solver.c $(TRANS)/swagman_solver.c $(TRANS)/grille_solver.c $(SUBST)/indep_solver.c $(SUBST)/homophonic_solver.c $(GRAPH)/playfair_solver.c $(GRAPH)/bifid_solver.c $(GRAPH)/trifid_solver.c $(GRAPH)/hill_solver.c $(GRAPH)/phillips_solver.c $(GRAPH)/twosquare_solver.c $(GRAPH)/foursquare_solver.c $(GRAPH)/adfgvx_solver.c $(GRAPH)/nihilist_sub_solver.c $(GRAPH)/bazeries_solver.c $(GRAPH)/portax_solver.c $(POLY)/progkey_solver.c $(GRAPH)/slidefair_solver.c $(GRAPH)/seriated_playfair_solver.c $(GRAPH)/digrafid_solver.c $(GRAPH)/cm_bifid_solver.c $(GRAPH)/trisquare_solver.c $(POLY)/intkey_solver.c $(POLY)/condi_solver.c $(GRAPH)/fracmorse_solver.c $(GRAPH)/pollux_solver.c $(GRAPH)/morbit_solver.c $(GRAPH)/straddling_checkerboard_solver.c $(GRAPH)/monome_dinome_solver.c $(SUBST)/ragbaby_solver.c
@@ -50,7 +50,7 @@ test:
 	./tests/test_gronsfeld
 	$(CC) $(INCLUDES) tests/test_optimal_cycleword.c $(CORE)/utils.c $(POLY)/quagmire.c $(POLY)/vigenere.c $(POLY)/porta.c $(POLY)/beaufort.c $(CORE)/optimal_cycleword.c -o tests/test_optimal_cycleword
 	./tests/test_optimal_cycleword
-	$(CC) $(INCLUDES) tests/test_held_karp.c $(TRANS)/trans_common.c $(CORE)/scoring.c $(CORE)/utils.c $(CORE)/dict.c -o tests/test_held_karp
+	$(CC) $(INCLUDES) tests/test_held_karp.c $(TRANS)/trans_common.c $(CORE)/scoring.c $(CORE)/utils.c $(CORE)/dict.c $(CORE)/spaces.c -o tests/test_held_karp
 	./tests/test_held_karp
 	$(CC) $(INCLUDES) tests/test_playfair.c $(CORE)/utils.c $(GRAPH)/playfair.c -o tests/test_playfair
 	./tests/test_playfair
@@ -108,7 +108,7 @@ test:
 	./tests/test_monome_dinome
 	$(CC) $(INCLUDES) tests/test_ragbaby.c $(CORE)/utils.c $(SUBST)/ragbaby.c -o tests/test_ragbaby
 	./tests/test_ragbaby
-	$(CC) $(INCLUDES) tests/test_double_transposition.c $(TRANS)/double_transposition_solver.c $(TRANS)/transpositions.c $(CORE)/scoring.c $(CORE)/utils.c $(CORE)/dict.c -o tests/test_double_transposition
+	$(CC) $(INCLUDES) tests/test_double_transposition.c $(TRANS)/double_transposition_solver.c $(TRANS)/transpositions.c $(CORE)/scoring.c $(CORE)/utils.c $(CORE)/dict.c $(CORE)/spaces.c -o tests/test_double_transposition
 	./tests/test_double_transposition
 
 # Slow optimizer regression suite (~30s): planted-cipher recovery through the

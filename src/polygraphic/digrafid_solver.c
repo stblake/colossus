@@ -277,6 +277,7 @@ static void digrafid_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, len);
     printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, len);
     printf("%s\n", ctx->cribtext);
 
     printf("\nrecovered horizontal grid (3x9, row major):\n");
