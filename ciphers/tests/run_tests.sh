@@ -222,6 +222,13 @@ fast | morbit_pp           | morbit        | morbit_pp.txt           |
 # the free code->cell substitution. Needs -logprob. Letters (incl. keyed labels) recover
 # robustly; numeric/figure-shift is a documented limitation (see tests/test_straddling*.c).
 slow | straddling_pp       | sc            | straddling_pp.txt       | -logprob
+# Monome-Dinome (keyed 3x8 box, 24-letter alphabet J->I/Z->Y; monome/dinome digit stream). A
+# ~300-letter cipher (keyword SECRETKEYWORD, keyed labels, indicators 6,3) recovered by the
+# validity config pre-filter + per-config anneal, selected across configs by DICTIONARY COVERAGE
+# (n-gram alone is gamed cross-config). NEEDS quintgrams + a dictionary; the extra args override
+# the default quadgram table and point -dictionary at the repo-root word list (run from this dir).
+# ~300 letters clears the rare-letter (P/Q/Y-Z) ceiling; see tests/test_monome_dinome*.c.
+slow | monome_dinome_pp    | md            | monome_dinome_pp.txt    | -logprob -ngramsize 5 -ngramfile ../../english_quintgrams.txt -dictionary ../../OxfordEnglishWords.txt
 # Ragbaby (keyed 24-letter alphabet; per-letter shift = word-position number mod 24). A ~113-letter
 # spaced cipher (keyword CRYPTOGRAM) recovered by the keyed-alphabet anneal; the known per-letter
 # shift makes it ride the reward-only quadgram table (no -logprob). Word divisions drive the

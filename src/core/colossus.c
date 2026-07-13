@@ -252,6 +252,7 @@
 #include "pollux_solver.h"
 #include "morbit_solver.h"
 #include "straddling_checkerboard_solver.h"
+#include "monome_dinome_solver.h"
 #include "ragbaby_solver.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -427,7 +428,7 @@ static bool cipher_type_plausible(int type, const char *cipher) {
     if (!has_letters && !has_digits) return true;   // degenerate input: don't skip
 
     bool digit_family = (type == POLLUX || type == MORBIT ||
-                         type == STRADDLING_CHECKERBOARD ||
+                         type == STRADDLING_CHECKERBOARD || type == MONOME_DINOME ||
                          type == NIHILIST_SUB || type == NIHILIST_SUB_NC ||
                          type == NIHILIST_SUB_M100);
 
@@ -690,7 +691,7 @@ static void print_help(const char *prog) {
 
     printf("CIPHER TYPES  (-type accepts the integer code or any listed alias)\n");
     printf("  code  name                                aliases\n");
-    for (int t = 0; t <= RAGBABY; t++) {
+    for (int t = 0; t <= MONOME_DINOME; t++) {
         const char *name = cipher_type_name(t);
         if (name)
             printf("  %3d   %-35s %s\n", t, name, cipher_type_aliases(t));
@@ -1297,6 +1298,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Straddling Checkerboard cipher (keyed-board digit fractionation; keyed labels + figure-shift).\n\n");
     } else if (cfg.cipher_type == RAGBABY) {
         printf("\nAttacking a Ragbaby cipher (keyed 24-letter alphabet; per-letter shift = word-position number mod 24).\n\n");
+    } else if (cfg.cipher_type == MONOME_DINOME) {
+        printf("\nAttacking a Monome-Dinome cipher (keyed 3x8 box, 24-letter alphabet; monome/dinome digit fractionation).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1455,6 +1458,14 @@ int main(int argc, char **argv) {
     if (cfg.cipher_type == RAGBABY && g_alpha == DEFAULT_ALPHABET_SIZE) {
         init_alphabet_ragbaby();
         printf("-type ragbaby: alphabet forced to %d letters (J->I, X->W): %s\n",
+            g_alpha, g_idx_to_char_arr);
+    }
+
+    // Monome-Dinome runs on a 24-letter keyed alphabet (A..Z minus J,Z; I/J and Y/Z shared).
+    // Force it here -- before load_ngrams -- unless the user already changed the alphabet.
+    if (cfg.cipher_type == MONOME_DINOME && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet_monome_dinome();
+        printf("-type md: alphabet forced to %d letters (J->I, Z->Y): %s\n",
             g_alpha, g_idx_to_char_arr);
     }
 
@@ -1723,6 +1734,12 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
+    if (cfg->cipher_type == MONOME_DINOME) {
+        solve_monome_dinome(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return;
+    }
+
     if (cfg->cipher_type == STRADDLING_CHECKERBOARD) {
         solve_straddling_checkerboard(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);

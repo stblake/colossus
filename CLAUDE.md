@@ -175,7 +175,9 @@ Polygraphic squares/cubes/matrix:
 - `62` seriated-playfair/spf · `63` digrafid/df · `64` cm-bifid/cmb · `65` trisquare/3sq.
 
 Morse / checkerboard (digit-stream input parsed from `ciphertext_str`):
-- `70` fractionated-morse/fm · `74` pollux/pol · `75` morbit/mor · `76` straddling/sc.
+- `70` fractionated-morse/fm · `74` pollux/pol · `75` morbit/mor · `76` straddling/sc ·
+  `78` monome-dinome/md (3x8 box, 24-letter J->I/Z->Y; needs quintgrams + dict — config
+  selection is by dictionary coverage, n-gram alone is gamed cross-config).
 
 Substitution:
 - `28` indep · `29` homophonic · `77` ragbaby/rag.

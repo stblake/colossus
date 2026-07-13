@@ -1164,6 +1164,22 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 120, .s_n_hill_climbs = 120000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Monome-Dinome: the Straddling Checkerboard's letter-only cousin. The solver PRE-FILTERS
+    // the 45 indicator pairs by structural token validity and keeps only the fully-valid set
+    // (1-6 configs, always incl. the true pair), so the engine anneals very few configs -- and
+    // can therefore afford a bigger per-config budget. Near the ~120-letter floor a single
+    // long climb occasionally lands in a near-miss basin, so RESTARTS are the lever (20x30000):
+    // more basins tried removes the seed-dependent dips to ~80-85%, landing a stable ~98%. The
+    // free code->letter substitution over a mis-segmented stream games a quadgram score, so
+    // Monome-Dinome effectively NEEDS -logprob with QUINTGRAMS; recovery is reliable from ~120
+    // letters (the ACA 60-100 low end is below the blind floor). Tuned against
+    // test_monome_dinome_solver.
+    { .cipher_type = MONOME_DINOME, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 20, .a_n_hill_climbs = 30000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 60, .s_n_hill_climbs = 40000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 
 bool apply_cipher_defaults(ColossusConfig *cfg, bool announce) {

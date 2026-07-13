@@ -267,6 +267,11 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "straddle") || str_eq(arg, "strad") || str_eq(arg, "sc"))
         return STRADDLING_CHECKERBOARD;
 
+    // Monome-Dinome (keyed 3x8 box, 24-letter alphabet J->I/Z->Y; monome/dinome digit codes).
+    if (str_eq(arg, "monome-dinome") || str_eq(arg, "monome") || str_eq(arg, "monomedinome") ||
+        str_eq(arg, "mono-dinome") || str_eq(arg, "md"))
+        return MONOME_DINOME;
+
     // Ragbaby (keyed 24-letter alphabet; per-letter shift = word-position number mod 24).
     if (str_eq(arg, "ragbaby") || str_eq(arg, "rag"))
         return RAGBABY;
@@ -359,6 +364,7 @@ const char *cipher_type_name(int type) {
         case MORBIT:                  return "Morbit";
         case STRADDLING_CHECKERBOARD: return "Straddling Checkerboard";
         case RAGBABY:                 return "Ragbaby";
+        case MONOME_DINOME:           return "Monome-Dinome";
         default:                      return NULL;
     }
 }
@@ -449,6 +455,7 @@ const char *cipher_type_aliases(int type) {
         case MORBIT:                  return "morbit, mor";
         case STRADDLING_CHECKERBOARD: return "straddling-checkerboard, straddling, straddle, strad, sc";
         case RAGBABY:                 return "ragbaby, rag";
+        case MONOME_DINOME:           return "monome-dinome, monome, mono-dinome, md";
         default:                      return NULL;
     }
 }

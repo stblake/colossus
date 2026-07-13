@@ -112,6 +112,14 @@ void init_alphabet_ragbaby(void) {
     g_char_to_idx[(int) 'X'] = g_char_to_idx[(int) 'W'];
 }
 
+void init_alphabet_monome_dinome(void) {
+    init_alphabet("JZ");                                  // 24 letters: A..Z minus J and Z
+    // Re-register the two dropped letters as PAIRS so a plaintext J or Z still decodes
+    // (ACA Monome-Dinome shares I/J and Y/Z). init_alphabet left both at -1.
+    g_char_to_idx[(int) 'J'] = g_char_to_idx[(int) 'I'];
+    g_char_to_idx[(int) 'Z'] = g_char_to_idx[(int) 'Y'];
+}
+
 int gcd(int a, int b) {
     while (b) { a %= b; int t = a; a = b; b = t; }
     return a;

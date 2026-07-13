@@ -106,8 +106,9 @@ typedef struct CribDrag {
 #define MORBIT             75  // Morbit: Morse taken in PAIRS over a pair<->digit map; deterministic exhaustive (9!)
 #define STRADDLING_CHECKERBOARD 76  // Straddling Checkerboard: keyed-board digit fractionation (keyed labels + figure-shift)
 #define RAGBABY            77  // Ragbaby: keyed 24-letter alphabet, per-letter shift = word-position number (mod 24)
+#define MONOME_DINOME      78  // Monome-Dinome: keyed 3x8 box, 24-letter alphabet (J->I, Z->Y); digit fractionation (monome/dinome)
 
-#define N_CIPHER_TYPES     78   // number of real cipher-type codes (0..77 inclusive)
+#define N_CIPHER_TYPES     79   // number of real cipher-type codes (0..78 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
@@ -1229,6 +1230,10 @@ void init_alphabet_digrafid(void);
 // re-registered as PAIRS (J -> I's index, X -> W's index) so a plaintext/ciphertext J or X
 // still decodes (the ACA Ragbaby convention pairs I/J and W/X). g_alpha becomes 24.
 void init_alphabet_ragbaby(void);
+// Build the 24-symbol Monome-Dinome alphabet: A..Z minus J and Z, with the two DROPPED
+// letters re-registered as PAIRS (J -> I's index, Z -> Y's index) so a plaintext J or Z
+// still decodes (the ACA Monome-Dinome convention shares I/J and Y/Z). g_alpha becomes 24.
+void init_alphabet_monome_dinome(void);
 
 // --- Ragbaby primitives (ragbaby.c) --------------------------------------------------
 // A Ragbaby enciphers each plaintext LETTER by shifting it `num` places forward in a keyed
