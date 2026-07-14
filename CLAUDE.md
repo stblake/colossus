@@ -180,7 +180,10 @@ Morse / checkerboard (digit-stream input parsed from `ciphertext_str`):
   selection is by dictionary coverage, n-gram alone is gamed cross-config).
 
 Substitution:
-- `28` indep · `29` homophonic · `77` ragbaby/rag.
+- `28` indep · `29` homophonic · `77` ragbaby/rag · `79` aristocrat/arist · `80` patristocrat/patri
+  (one solver core: free 26-perm climbed by n-gram with the homophonic incremental fast path;
+  word divisions preserved for the Aristocrat's spaced report, dropped/5-grouped for the
+  Patristocrat; -logprob).
 
 ### Key global flags
 

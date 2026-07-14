@@ -254,6 +254,7 @@
 #include "straddling_checkerboard_solver.h"
 #include "monome_dinome_solver.h"
 #include "ragbaby_solver.h"
+#include "aristocrat_solver.h"
 #include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -707,7 +708,7 @@ static void print_help(const char *prog) {
 
     printf("CIPHER TYPES  (-type accepts the integer code or any listed alias)\n");
     printf("  code  name                                aliases\n");
-    for (int t = 0; t <= MONOME_DINOME; t++) {
+    for (int t = 0; t < N_CIPHER_TYPES; t++) {
         const char *name = cipher_type_name(t);
         if (name)
             printf("  %3d   %-35s %s\n", t, name, cipher_type_aliases(t));
@@ -1325,6 +1326,10 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Ragbaby cipher (keyed 24-letter alphabet; per-letter shift = word-position number mod 24).\n\n");
     } else if (cfg.cipher_type == MONOME_DINOME) {
         printf("\nAttacking a Monome-Dinome cipher (keyed 3x8 box, 24-letter alphabet; monome/dinome digit fractionation).\n\n");
+    } else if (cfg.cipher_type == ARISTOCRAT) {
+        printf("\nAttacking an Aristocrat cipher (simple monoalphabetic substitution; word divisions preserved).\n\n");
+    } else if (cfg.cipher_type == PATRISTOCRAT) {
+        printf("\nAttacking a Patristocrat cipher (simple monoalphabetic substitution; no word divisions, 5-letter groups).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1622,7 +1627,8 @@ int main(int argc, char **argv) {
                                  (t == PERIOD_COLUMN) ||
                                  (t == PERIOD_COLUMN_SPACE) ||
                                  (t == TRANSCOL2_DC) ||
-                                 (t == RAGBABY);   // word divisions drive the per-letter numbering
+                                 (t == RAGBABY) ||  // word divisions drive the per-letter numbering
+                                 (t == ARISTOCRAT); // word divisions preserved in the spaced report
         if (!space_significant)
             while (ci > 0 && isspace((unsigned char) single_ciphertext_buffer[ci - 1]))
                 single_ciphertext_buffer[--ci] = '\0';
@@ -1781,6 +1787,13 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     if (cfg->cipher_type == RAGBABY) {
         // Parses the spaced ciphertext_str directly (word divisions drive the per-letter numbering).
         solve_ragbaby(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == ARISTOCRAT || cfg->cipher_type == PATRISTOCRAT) {
+        // Simple monoalphabetic substitution; word divisions carried through cipher_indices as
+        // sentinels (Aristocrat reconstructs them; Patristocrat regroups in 5s).
+        solve_aristocrat(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
