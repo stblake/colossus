@@ -1211,6 +1211,7 @@ void print_cipher(const int indices[], int len, const SymbolTable *tab);
 // modular arithmetic, and the n-gram packing base use g_alpha.
 extern bool g_ngram_logprob;      // n-gram scoring mode (see utils.c); false = legacy
 extern bool g_ngram_reverse;      // reversal-invariant table (see utils.c); false = off
+extern double g_ngram_floor;      // per-window n-gram floor for the entropy term (utils.c)
 extern bool g_score_no_sentinel;  // decoded cipher is all-letters (see utils.c); false = safe
 extern const CribDrag *g_cribdrag; // dragged cribs consulted by state_score; NULL = off
 extern float g_cribdrag_weight;    // crib-drag blend weight; 0 = off

@@ -16,7 +16,21 @@
 //
 // There is no period or transposition to recover -- positions are preserved -- so the
 // solver just hill-climbs the N-entry map against the n-gram score, exactly like the
-// other CipherModels. It plugs into the shared shotgun/anneal engine (run_solver):
+// other CipherModels.
+//
+// ANTI-COLLAPSE. A homophonic map is free to fold many symbols onto E/T/A... to tile
+// high-frequency n-grams -- a low-entropy fixed point that can out-score (or, at high
+// symbol-count, tie) the true plaintext on raw n-grams. Two mutually-exclusive terms
+// suppress it (pick by symbol-count / redundancy regime):
+//   * -weightmono (default 1.0): ADDITIVE chi-squared monogram penalty. Best when the
+//     collapse clearly out-scores truth on n-grams (short, few symbols): e.g. Zodiac Z408
+//     (54 symbols) needs weightmono ~1.5.
+//   * -weightentropy (default 0): AZDecrypt's MULTIPLICATIVE fitness (ngram - floor)*H^w,
+//     H = Shannon entropy of the decrypt (see state_score). Best when truth barely beats
+//     collapse on n-grams (long, MANY symbols) so an additive penalty just lands
+//     frequency-matched near-misses: e.g. Beale cipher 2 (182 symbols, 762 chars) is
+//     cracked blind by -weightentropy 1.5 -weightmono 0 (long slow anneal; the entropy
+//     score scale is O(10-50), so inittemp must be O(1), not the ~0.02 of the mono scale). It plugs into the shared shotgun/anneal engine (run_solver):
 // SHAPE_ANNEAL (Metropolis) acceptance, shotgun restarts, backtracking. Seeds are
 // frequency-flattening (symbols drawn from the English monogram distribution, so
 // common letters naturally receive more homophones); the move set reassigns one
@@ -224,6 +238,23 @@ static double homophonic_score_neighbor(const SolverCtx *ctx, const SolverConfig
     double ng_score = 0.0;
     if (cfg->weight_ngram > 1.e-4 && n_windows > 0)
         ng_score = h->scale * h->pend_ngsum / (len - ng);
+
+    // Mirror state_score's multiplicative entropy term (AZDecrypt fitness) on the fast
+    // path: fitness_ngram = (ng_score - floor) * H^weight_entropy, with H the Shannon
+    // entropy of the neighbour's letter distribution. Computed from the maintained
+    // histogram pend_counts (no re-tally) using the SAME formula as entropy() (utils.c:
+    // natural log, over ALPHABET_SIZE bins, divided by len) so the incremental score
+    // stays bit-identical to the full state_score. Default weight_entropy == 0 skips it.
+    if (cfg->weight_ngram > 1.e-4 && n_windows > 0 && cfg->weight_entropy > 1.e-4) {
+        double H = 0.0;
+        for (int c = 0; c < ALPHABET_SIZE; c++) {
+            if (h->pend_counts[c] > 0) {
+                double f = ((double) h->pend_counts[c]) / len;
+                H -= f * log(f);
+            }
+        }
+        ng_score = (ng_score - g_ngram_floor) * pow((double) H, (double) cfg->weight_entropy);
+    }
 
     double score;
     if (ctx->n_cribs > 0) {

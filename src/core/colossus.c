@@ -639,7 +639,7 @@ static void print_help(const char *prog) {
 "  -weightcrib <f>         Crib-match score weight.                          [36.0]\n"
 "  -weightcribdrag <f>     Crib-dragging reward weight (-cribdrag).          [36.0]\n"
 "  -weightioc <f>          Index-of-coincidence score weight.                 [0.0]\n"
-"  -weightentropy <f>      Entropy score weight.                              [0.0]\n"
+"  -weightentropy <f>      AZDecrypt entropy coupling: ngram*H^f (anti-collapse).[0.0]\n"
 "  -weightstructure <f>    Periodic-redundancy guard (general transposition). [4.0]\n"
 "  -weightmono <f>         Homophonic monogram chi-squared anti-collapse.     [1.0]\n"
 "  -weightword <f>         Dictionary word-coverage reward (transposition).   [0.0]\n"
