@@ -276,6 +276,15 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "ragbaby") || str_eq(arg, "rag"))
         return RAGBABY;
 
+    // Aristocrat (simple monoalphabetic substitution, word divisions preserved).
+    if (str_eq(arg, "aristocrat") || str_eq(arg, "arist") || str_eq(arg, "aris"))
+        return ARISTOCRAT;
+
+    // Patristocrat (the same monoalphabetic substitution without word divisions; 5-letter groups).
+    if (str_eq(arg, "patristocrat") || str_eq(arg, "patrist") || str_eq(arg, "patri") ||
+        str_eq(arg, "pat"))
+        return PATRISTOCRAT;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -365,6 +374,8 @@ const char *cipher_type_name(int type) {
         case STRADDLING_CHECKERBOARD: return "Straddling Checkerboard";
         case RAGBABY:                 return "Ragbaby";
         case MONOME_DINOME:           return "Monome-Dinome";
+        case ARISTOCRAT:              return "Aristocrat";
+        case PATRISTOCRAT:            return "Patristocrat";
         default:                      return NULL;
     }
 }
@@ -456,6 +467,8 @@ const char *cipher_type_aliases(int type) {
         case STRADDLING_CHECKERBOARD: return "straddling-checkerboard, straddling, straddle, strad, sc";
         case RAGBABY:                 return "ragbaby, rag";
         case MONOME_DINOME:           return "monome-dinome, monome, mono-dinome, md";
+        case ARISTOCRAT:              return "aristocrat, arist, aris";
+        case PATRISTOCRAT:            return "patristocrat, patrist, patri, pat";
         default:                      return NULL;
     }
 }

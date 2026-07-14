@@ -107,8 +107,10 @@ typedef struct CribDrag {
 #define STRADDLING_CHECKERBOARD 76  // Straddling Checkerboard: keyed-board digit fractionation (keyed labels + figure-shift)
 #define RAGBABY            77  // Ragbaby: keyed 24-letter alphabet, per-letter shift = word-position number (mod 24)
 #define MONOME_DINOME      78  // Monome-Dinome: keyed 3x8 box, 24-letter alphabet (J->I, Z->Y); digit fractionation (monome/dinome)
+#define ARISTOCRAT         79  // Aristocrat: simple monoalphabetic substitution, WORD DIVISIONS preserved (spaced plaintext)
+#define PATRISTOCRAT       80  // Patristocrat: the same monoalphabetic substitution WITHOUT word divisions (5-letter groups)
 
-#define N_CIPHER_TYPES     79   // number of real cipher-type codes (0..78 inclusive)
+#define N_CIPHER_TYPES     81   // number of real cipher-type codes (0..80 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
@@ -1218,6 +1220,7 @@ void print_cipher(const int indices[], int len, const SymbolTable *tab);
 // modular arithmetic, and the n-gram packing base use g_alpha.
 extern bool g_ngram_logprob;      // n-gram scoring mode (see utils.c); false = legacy
 extern bool g_ngram_reverse;      // reversal-invariant table (see utils.c); false = off
+extern double g_ngram_floor;      // per-window n-gram floor for the entropy term (utils.c)
 extern bool g_score_no_sentinel;  // decoded cipher is all-letters (see utils.c); false = safe
 extern const CribDrag *g_cribdrag; // dragged cribs consulted by state_score; NULL = off
 extern float g_cribdrag_weight;    // crib-drag blend weight; 0 = off
@@ -1297,6 +1300,25 @@ void ragbaby_encrypt(const int in[], const int num[], int len, const int ka[], c
                      int alpha, int out[]);
 void ragbaby_decrypt(const int in[], const int num[], int len, const int ka[], const int ka_inv[],
                      int alpha, int out[]);
+
+// --- Aristocrat / Patristocrat primitives (aristocrat.c) -----------------------------
+// A simple monoalphabetic substitution over a 26-letter bijection cmap[]: the ciphertext
+// letter for plaintext letter p is cmap[p] (a permutation of 0..25). The Aristocrat keeps
+// its word divisions (spaces) in the ciphertext; the Patristocrat drops them (5-letter
+// groups). The math is identical -- only the presentation differs -- so both share this map.
+// ACA keying modes select which alphabet(s) are keyed when a realistic map is built:
+#define ARIST_K1 1   // keyed PLAINTEXT alphabet, straight ciphertext alphabet
+#define ARIST_K2 2   // straight plaintext, keyed CIPHERTEXT alphabet (the common form)
+#define ARIST_K3 3   // both keyed with the SAME keyword (ciphertext row rotated by `shift`)
+#define ARIST_K4 4   // both keyed with DIFFERENT keywords
+// Build the substitution map cmap[] (cmap[pt]=ct) for a keying mode. kw1/kw2 are keywords
+// (kw2 used only for K4); `shift` rotates the ciphertext row (used by K3, ignored otherwise).
+void aristocrat_build_map(int keying, const char *kw1, const char *kw2, int shift, int cmap[]);
+// Invert a bijection: cinv[cmap[p]] = p for p in 0..alpha-1.
+void aristocrat_invert(const int cmap[], int cinv[], int alpha);
+// Apply a bijection to a LETTER stream (indices 0..alpha-1): out[i] = map[in[i]]. Encrypt with
+// cmap, decrypt with its inverse. out[] may alias in[]. (Sentinels are handled by the caller.)
+void aristocrat_apply(const int in[], int len, const int map[], int out[]);
 
 static inline int index_to_char(int idx) {
     return (idx >= 0) ? (unsigned char) g_idx_to_char_arr[idx] : (-(idx + 1));

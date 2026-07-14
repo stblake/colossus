@@ -234,6 +234,13 @@ slow | monome_dinome_pp    | md            | monome_dinome_pp.txt    | -logprob 
 # shift makes it ride the reward-only quadgram table (no -logprob). Word divisions drive the
 # numbering, so the cipher keeps its spaces. See tests/test_ragbaby*.c.
 fast | ragbaby_pp          | ragbaby       | ragbaby_pp.txt          | -nrestarts 12 -nhillclimbs 60000
+# Aristocrat (simple monoalphabetic substitution, word divisions preserved) and Patristocrat (the
+# same cipher without word divisions, 5-letter groups). Both climb a free 26-permutation by n-gram
+# score with the homophonic-style incremental fast path; a free 26-sub is weaker signal than a
+# known-shift alphabet, so they ride -logprob. ~113-letter K2 (keyword CRYPTOGRAM / KRYPTOS).
+# See tests/test_aristocrat*.c.
+fast | aristocrat_pp        | aristocrat    | aristocrat_pp.txt       | -logprob -nrestarts 8 -nhillclimbs 120000
+fast | patristocrat_pp      | patristocrat  | patristocrat_pp.txt     | -logprob -nrestarts 8 -nhillclimbs 120000
 EOF
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }

@@ -20,6 +20,15 @@ double g_monograms[MAX_ALPHABET_SIZE];
 // PENALISES unseen n-grams (set via -logprob, recommended with quintgrams).
 bool g_ngram_logprob = false;
 
+// Per-window n-gram floor value, set by load_ngrams: in -logprob mode it is the
+// log10 floor assigned to unseen n-grams (the minimum a window can score); 0 in the
+// legacy reward-only mode (where table entries are already >= 0). Used only by the
+// multiplicative entropy term (state_score, -weightentropy): subtracting it shifts the
+// mean n-gram log-prob to a non-negative magnitude so multiplying by entropy^w is
+// correctly oriented (higher entropy -> larger score). Unused when weight_entropy == 0,
+// so every existing solve is bit-identical.
+double g_ngram_floor = 0.0;
+
 // Reversal-invariant n-gram scoring (set via -reversengrams). When true, load_ngrams
 // symmetrizes the table so every n-gram and its digit-reversed twin carry the same
 // (max) weight -- a plaintext written with any words/segments reversed then scores like

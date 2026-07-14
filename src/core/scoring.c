@@ -22,6 +22,22 @@ double state_score(int decrypted[], int cipher_len,
 
     if (weight_ngram > 1.e-4) {
         decrypted_ngram_score = ngram_score(decrypted, cipher_len, ngram_data, ngram_size);
+        // AZDecrypt-style multiplicative entropy coupling (opt-in, -weightentropy > 0):
+        //   fitness_ngram = (ngram_score - floor) * H^weight_entropy
+        // where H is the Shannon entropy of the decrypted letter distribution. Pure
+        // n-gram fitness barely separates the true plaintext from the homophonic
+        // "collapse" fixed point (fold many symbols onto E/T/A to tile common n-grams);
+        // that collapse has a low-entropy letter distribution, so scaling the n-gram
+        // magnitude by H^w suppresses it PROPORTIONALLY to its own n-gram fit (scale-
+        // invariant, unlike an additive monogram penalty). Shifting by g_ngram_floor
+        // makes the log-prob magnitude non-negative so the multiply is correctly
+        // oriented (higher entropy -> larger score). Default weight_entropy == 0 leaves
+        // decrypted_ngram_score untouched -> every existing solve is bit-identical.
+        if (weight_entropy > 1.e-4) {
+            double H = entropy(decrypted, cipher_len);
+            decrypted_ngram_score = (decrypted_ngram_score - g_ngram_floor)
+                                    * pow(H, weight_entropy);
+        }
     }
 
     if (have_drag) {
@@ -387,6 +403,7 @@ float* load_ngrams(char *ngram_file, int ngram_size, bool verbose) {
         for (i = 0; i < n_ngrams; i++)
             ngram_data[i] = (ngram_data[i] > 0.) ? (float) log10(ngram_data[i] / count_total)
                                                  : (float) floor;
+        g_ngram_floor = floor;   // min per-window value: shift base for the entropy term
     } else {
         // Legacy reward-only scheme: normalized log(1 + count); unseen -> 0.
         total = 0.;

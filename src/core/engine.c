@@ -1180,6 +1180,25 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 60, .s_n_hill_climbs = 40000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Aristocrat / Patristocrat: a simple 26-letter monoalphabetic substitution, climbed as a free
+    // 26-permutation by n-gram score with the homophonic-style INCREMENTAL fast path (each swap is
+    // scored as a delta over the touched windows), so iterations are very cheap and the budget can
+    // be large. A frequency rank-match warm start puts most cells right; the anneal corrects the
+    // rest. Aristocrats are short (~80-150 letters) so RESTARTS + a warm temperature are the levers.
+    // Best with -logprob (a free 26-sub is weaker signal than Ragbaby's known-shift alphabet). Both
+    // variants share the schedule (identical search; only the report differs). Tuned vs the solver test.
+    { .cipher_type = ARISTOCRAT, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 12, .a_n_hill_climbs = 200000,
+      .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 60, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    { .cipher_type = PATRISTOCRAT, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 12, .a_n_hill_climbs = 200000,
+      .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 60, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 
 bool apply_cipher_defaults(ColossusConfig *cfg, bool announce) {
