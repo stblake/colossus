@@ -285,6 +285,11 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "pat"))
         return PATRISTOCRAT;
 
+    // Tridigital (keyed 3x10 block; digit-per-letter with a word-separator digit).
+    if (str_eq(arg, "tridigital") || str_eq(arg, "tridigit") || str_eq(arg, "tridig") ||
+        str_eq(arg, "td"))
+        return TRIDIGITAL;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -376,6 +381,7 @@ const char *cipher_type_name(int type) {
         case MONOME_DINOME:           return "Monome-Dinome";
         case ARISTOCRAT:              return "Aristocrat";
         case PATRISTOCRAT:            return "Patristocrat";
+        case TRIDIGITAL:              return "Tridigital";
         default:                      return NULL;
     }
 }
@@ -469,6 +475,7 @@ const char *cipher_type_aliases(int type) {
         case MONOME_DINOME:           return "monome-dinome, monome, mono-dinome, md";
         case ARISTOCRAT:              return "aristocrat, arist, aris";
         case PATRISTOCRAT:            return "patristocrat, patrist, patri, pat";
+        case TRIDIGITAL:              return "tridigital, tridigit, tridig, td";
         default:                      return NULL;
     }
 }

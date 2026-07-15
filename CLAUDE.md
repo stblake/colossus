@@ -178,6 +178,12 @@ Morse / checkerboard (digit-stream input parsed from `ciphertext_str`):
 - `70` fractionated-morse/fm · `74` pollux/pol · `75` morbit/mor · `76` straddling/sc ·
   `78` monome-dinome/md (3x8 box, 24-letter J->I/Z->Y; needs quintgrams + dict — config
   selection is by dictionary coverage, n-gram alone is gamed cross-config).
+- `81` tridigital/td (keyed 3x10 block, full 26-letter alphabet, one digit per letter + a
+  word-separator digit). AMBIGUOUS 3-to-1 decode (unique in this family): the key is a
+  partition of 26 letters into 9 column-groups, the plaintext is chosen per position by an
+  inner beam-Viterbi (spaces transparent → context carries across words); separator picked by
+  word-length fit, cross-config winner by WHOLE-WORD coverage. Dense polyphonic ⇒ partial,
+  high-variance recovery below the 99% floor at all practical lengths; needs quintgrams + dict.
 
 Substitution:
 - `28` indep · `29` homophonic · `77` ragbaby/rag · `79` aristocrat/arist · `80` patristocrat/patri

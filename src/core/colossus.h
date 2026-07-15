@@ -109,8 +109,9 @@ typedef struct CribDrag {
 #define MONOME_DINOME      78  // Monome-Dinome: keyed 3x8 box, 24-letter alphabet (J->I, Z->Y); digit fractionation (monome/dinome)
 #define ARISTOCRAT         79  // Aristocrat: simple monoalphabetic substitution, WORD DIVISIONS preserved (spaced plaintext)
 #define PATRISTOCRAT       80  // Patristocrat: the same monoalphabetic substitution WITHOUT word divisions (5-letter groups)
+#define TRIDIGITAL         81  // Tridigital: keyed 3x10 block, digit-per-letter with a word-separator digit (ambiguous 3-to-1 decode)
 
-#define N_CIPHER_TYPES     81   // number of real cipher-type codes (0..80 inclusive)
+#define N_CIPHER_TYPES     82   // number of real cipher-type codes (0..81 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)

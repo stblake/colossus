@@ -253,6 +253,7 @@
 #include "morbit_solver.h"
 #include "straddling_checkerboard_solver.h"
 #include "monome_dinome_solver.h"
+#include "tridigital_solver.h"
 #include "ragbaby_solver.h"
 #include "aristocrat_solver.h"
 #include "spaces.h"
@@ -435,6 +436,7 @@ static bool cipher_type_plausible(int type, const char *cipher) {
 
     bool digit_family = (type == POLLUX || type == MORBIT ||
                          type == STRADDLING_CHECKERBOARD || type == MONOME_DINOME ||
+                         type == TRIDIGITAL ||
                          type == NIHILIST_SUB || type == NIHILIST_SUB_NC ||
                          type == NIHILIST_SUB_M100);
 
@@ -1330,6 +1332,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking an Aristocrat cipher (simple monoalphabetic substitution; word divisions preserved).\n\n");
     } else if (cfg.cipher_type == PATRISTOCRAT) {
         printf("\nAttacking a Patristocrat cipher (simple monoalphabetic substitution; no word divisions, 5-letter groups).\n\n");
+    } else if (cfg.cipher_type == TRIDIGITAL) {
+        printf("\nAttacking a Tridigital cipher (keyed 3x10 block; digit-per-letter with a word-separator digit, ambiguous decode).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1781,6 +1785,12 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
 
     if (cfg->cipher_type == STRADDLING_CHECKERBOARD) {
         solve_straddling_checkerboard(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == TRIDIGITAL) {
+        // Parses the digit stream from ciphertext_str; ambiguous 3-to-1 decode via inner Viterbi.
+        solve_tridigital(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

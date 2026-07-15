@@ -1180,6 +1180,17 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 60, .s_n_hill_climbs = 40000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Tridigital: anneal a 26-letter -> 9-group partition, scored by an inner beam-Viterbi decode
+    // (each eval decodes the whole stream, so climbs are pricier than the other digit types -> a
+    // smaller climb budget, but restart-heavy). Each of the kept separator configs is mini-solve
+    // warm-started, so the engine only polishes. Best with -logprob + quintgrams + a -dictionary
+    // (the dense polyphonic decode games raw n-gram; coverage selection needs the dictionary).
+    { .cipher_type = TRIDIGITAL, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 12, .a_n_hill_climbs = 8000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 40, .s_n_hill_climbs = 12000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     // Aristocrat / Patristocrat: a simple 26-letter monoalphabetic substitution, climbed as a free
     // 26-permutation by n-gram score with the homophonic-style INCREMENTAL fast path (each swap is
     // scored as a delta over the touched windows), so iterations are very cheap and the budget can
