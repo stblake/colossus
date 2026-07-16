@@ -93,3 +93,8 @@ tools/morbit_gen
 tests/test_straddling_checkerboard
 tests/test_straddling_checkerboard_solver
 tools/straddling_checkerboard_gen
+# Added by code-review-graph
+.code-review-graph/
+# Local Claude Code state (machine-specific, not shared)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock

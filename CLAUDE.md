@@ -417,3 +417,58 @@ paired).
   score at 100%.
 - The binary `colossus`, `*.o`, and `.DS_Store` are git-ignored.
 - Don't commit or push unless asked.
+
+<!-- code-review-graph MCP tools -->
+## MCP Tools: code-review-graph
+
+**IMPORTANT: This project has a knowledge graph. ALWAYS use the
+code-review-graph MCP tools BEFORE using Grep/Glob/Read to explore
+the codebase.** The graph is faster, cheaper (fewer tokens), and gives
+you structural context (callers, dependents, test coverage) that file
+scanning cannot.
+
+### When to use graph tools FIRST
+
+- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
+- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
+- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
+- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
+- **Architecture questions**: `get_architecture_overview` + `list_communities`
+
+Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
+
+### Key Tools
+
+| Tool | Use when |
+| ------ | ---------- |
+| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
+| `get_review_context` | Need source snippets for review — token-efficient |
+| `get_impact_radius` | Understanding blast radius of a change |
+| `get_affected_flows` | Finding which execution paths are impacted |
+| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes` | Finding functions/classes by name or keyword |
+| `get_architecture_overview` | Understanding high-level codebase structure |
+| `refactor_tool` | Planning renames, finding dead code |
+
+### Workflow
+
+1. **The graph is built/refreshed at the start of every session**, automatically: the
+   `SessionStart` hook in `.claude/settings.json` runs `code-review-graph update` (falling
+   back to a full `build` if no graph exists yet, e.g. a fresh clone) and then prints
+   `status` as context. It takes ~1s warm. You do **not** need to build it by hand — but if
+   the graph ever looks stale or the status line is missing, run `code-review-graph update
+   --repo .` (or `build --repo .` to re-parse everything from scratch).
+2. It also auto-updates after each Edit/Write/Bash (the `PostToolUse` hook, `--skip-flows`).
+3. Use `detect_changes` for code review.
+4. Use `get_affected_flows` to understand impact.
+5. Use `query_graph` pattern="tests_for" to check coverage.
+
+### Scope in this repo
+
+- Covers **C and bash**: ~308 files / ~1900 nodes / ~14k edges, spanning `src/`, `tests/`,
+  and `tools/`. Call edges resolve across the flat-include layout (e.g. `ngram_score` in
+  `src/core/scoring.c` correctly lists its callers in the per-cipher solvers).
+- The graph DB lives in `.code-review-graph/` and is git-ignored.
+- The MCP server is declared in `.mcp.json` (`uvx code-review-graph serve`). The
+  `mcp__code-review-graph__*` tools only appear **after a Claude Code restart** following
+  that file being added.
