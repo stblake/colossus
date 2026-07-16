@@ -110,8 +110,9 @@ typedef struct CribDrag {
 #define ARISTOCRAT         79  // Aristocrat: simple monoalphabetic substitution, WORD DIVISIONS preserved (spaced plaintext)
 #define PATRISTOCRAT       80  // Patristocrat: the same monoalphabetic substitution WITHOUT word divisions (5-letter groups)
 #define TRIDIGITAL         81  // Tridigital: keyed 3x10 block, digit-per-letter with a word-separator digit (ambiguous 3-to-1 decode)
+#define CHECKERBOARD       82  // Checkerboard (ACA): plaintext letter -> (row label, col label) digraph over a keyed 5x5 square; simple (1 label/axis) or complex (2 labels/axis, homophonic)
 
-#define N_CIPHER_TYPES     82   // number of real cipher-type codes (0..81 inclusive)
+#define N_CIPHER_TYPES     83   // number of real cipher-type codes (0..82 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
@@ -180,6 +181,17 @@ static inline int intkey_base(int cipher_type) {
 enum { NIH_ADD_CARRY = 0,    // integer add with carry (ACA standard): cipher 22..110
        NIH_ADD_NOCARRY = 1,  // per-digit add mod 10, no carry: cipher 00..99 (2-digit)
        NIH_ADD_MOD100 = 2 }; // 2-digit add mod 100: cipher 00..99
+
+#define CHECKERBOARD_SIDE     5   // Checkerboard Polybius square side (5x5, 25 letters, J->I)
+#define CHECKERBOARD_GRID     25  // CHECKERBOARD_SIDE^2
+#define CHECKERBOARD_MAX_SIDE 6   // largest side the side-generic primitive/tests support
+#define CHECKERBOARD_MAX_GRID 36  // CHECKERBOARD_MAX_SIDE^2
+#define CHECKERBOARD_MAX_LABELS 12 // 2 * CHECKERBOARD_MAX_SIDE (complex case: 2 labels per line)
+// Checkerboard square-fill routes: how the keyed-alphabet SEQUENCE lands in the grid cells.
+// The ACA square is spiral-routed (keyword+tail read clockwise from top-left); row-major is the
+// plain Polybius fill. Only the generator/tests care -- the solver searches the composite
+// code->letter map and never sees the route.
+enum { CB_ROUTE_ROWMAJOR = 0, CB_ROUTE_SPIRAL_CW = 1 };
 
 #define TRIFID_SIDE 3           // Trifid cube side (the classic 3x3x3)
 #define TRIFID_CELLS 27         // Trifid cube size (TRIFID_SIDE^3) == the 27-symbol alphabet
@@ -979,6 +991,31 @@ void nihilist_sub_encrypt(const int plain[], int n, const int grid[],
 int  nihilist_sub_decrypt(const int nums[], int n, const int grid[],
         const int rowlbl[], const int collbl[], int side,
         const int key_cells[], int period, int conv, int out_letters[]);
+
+
+// Checkerboard cipher (checkerboard.c). A keyed side x side Polybius square (a permutation of the
+// active n = side*side alphabet, J->I for the 5x5); each plaintext letter -> its cell -> a DIGRAPH
+// (row label, column label), row first, read from outside the square. The square is filled by
+// laying the keyed-alphabet SEQUENCE (bifid_grid_from_keyword) into the cells along a route
+// (CB_ROUTE_SPIRAL_CW is the ACA convention; row-major is the plain fill).
+//   SIMPLE case: one label per row/column (n_row_lbl == n_col_lbl == 1), so each letter has EXACTLY
+//     one digraph -- a bijection between side^2 codes and side^2 letters.
+//   COMPLEX case: two labels per row/column (n_row_lbl == 2), so each letter has 2x2 codes and the
+//     encipherer picks one freely per position -> HOMOPHONIC. The choice MUST be randomized on
+//     encode (a canonical pick starves the solver's gradient AND collapses the observed label set).
+// Encrypt labels are flat, row-major by line then choice: rowlbl[row*n_row_lbl + k] is row `row`'s
+// k-th label letter (0..n-1); likewise collbl. Decrypt inverts via label2row[]/label2col[] (indexed
+// by label letter 0..MAX_ALPHABET_SIZE-1, giving the row/col 0..side-1 or -1 for a non-label); a
+// position whose either coordinate is not a legal label decrypts to the sentinel letter 0, and the
+// returned count of LEGAL positions is a square-independent signal. checkerboard_detect reports the
+// number of distinct row/column labels observed (>side => that axis is complex).
+void checkerboard_spiral_order(int order[], int side);   // clockwise-from-top-left cell visit order
+void checkerboard_square_from_keyword(const int keyword[], int kwlen, int route, int grid[], int n);
+void checkerboard_encrypt(const int plain[], int plen, const int grid[], int side,
+        const int rowlbl[], int n_row_lbl, const int collbl[], int n_col_lbl, int out[]);
+int  checkerboard_decrypt(const int cipher[], int clen, const int grid[], int side,
+        const int label2row[], const int label2col[], int out_letters[]);
+void checkerboard_detect(const int cipher[], int clen, int *n_row_lbl, int *n_col_lbl);
 
 
 // ADFGVX / ADFGX cipher (adfgvx.c). Fractionation over a keyed side x side Polybius

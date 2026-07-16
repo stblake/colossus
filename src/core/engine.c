@@ -1210,6 +1210,18 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 60, .s_n_hill_climbs = 200000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Checkerboard: once the per-axis label grouping is fixed, the search is a free 25-code -> 25-
+    // letter bijection over the merged codes -- an ARISTOCRAT over 25 symbols -- so it shares the
+    // aristocrat profile (warm freq-rank seed + the homophonic incremental fast path; every move is
+    // a two-code swap, aristocrat granularity, NOT digrafid's coarse keyword move -> temp 0.15, not
+    // 0.30). Restarts are the lever: the simple case is short (60-90 ACA letters) and the complex
+    // case is strongly bimodal (finds the pairing basin or lands in garbage). Best with -logprob.
+    { .cipher_type = CHECKERBOARD, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 12, .a_n_hill_climbs = 200000,
+      .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 60, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 
 bool apply_cipher_defaults(ColossusConfig *cfg, bool announce) {

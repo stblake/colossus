@@ -254,6 +254,7 @@
 #include "straddling_checkerboard_solver.h"
 #include "monome_dinome_solver.h"
 #include "tridigital_solver.h"
+#include "checkerboard_solver.h"
 #include "ragbaby_solver.h"
 #include "aristocrat_solver.h"
 #include "spaces.h"
@@ -1334,6 +1335,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Patristocrat cipher (simple monoalphabetic substitution; no word divisions, 5-letter groups).\n\n");
     } else if (cfg.cipher_type == TRIDIGITAL) {
         printf("\nAttacking a Tridigital cipher (keyed 3x10 block; digit-per-letter with a word-separator digit, ambiguous decode).\n\n");
+    } else if (cfg.cipher_type == CHECKERBOARD) {
+        printf("\nAttacking a Checkerboard cipher (keyed 5x5 square; plaintext letter -> row/col label digraph; simple/complex auto-detected).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1467,6 +1470,14 @@ int main(int argc, char **argv) {
          cfg.cipher_type == NIHILIST_SUB_M100) && g_alpha == DEFAULT_ALPHABET_SIZE) {
         init_alphabet("J");
         printf("-type nihilist-sub: alphabet forced to %d letters (J->I): %s\n",
+            g_alpha, g_idx_to_char_arr);
+    }
+
+    // Checkerboard runs on the same 5x5 (25-letter, J->I) square as Playfair/Bifid. Force it
+    // here -- before load_ngrams -- unless the user already shrank the alphabet.
+    if (cfg.cipher_type == CHECKERBOARD && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet("J");
+        printf("-type checkerboard: alphabet forced to %d letters (J->I): %s\n",
             g_alpha, g_idx_to_char_arr);
     }
 
@@ -1791,6 +1802,13 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
     if (cfg->cipher_type == TRIDIGITAL) {
         // Parses the digit stream from ciphertext_str; ambiguous 3-to-1 decode via inner Viterbi.
         solve_tridigital(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == CHECKERBOARD) {
+        // Keyed 5x5 square; plaintext letter -> (row label, col label) digraph. Auto-detects
+        // simple/complex per axis; searches the square (+ label pairing for the complex case).
+        solve_checkerboard(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

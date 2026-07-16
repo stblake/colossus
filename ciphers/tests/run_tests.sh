@@ -241,6 +241,13 @@ fast | ragbaby_pp          | ragbaby       | ragbaby_pp.txt          | -nrestart
 # See tests/test_aristocrat*.c.
 fast | aristocrat_pp        | aristocrat    | aristocrat_pp.txt       | -logprob -nrestarts 8 -nhillclimbs 120000
 fast | patristocrat_pp      | patristocrat  | patristocrat_pp.txt     | -logprob -nrestarts 8 -nhillclimbs 120000
+# Checkerboard (ACA "Checkerboard", 5x5 keyed square, plaintext letter -> row/col LABEL digraph;
+# 25-letter alphabet, J->I). SIMPLE case (a): one label keyword per axis, so each letter has exactly
+# one digraph and the square + label order fold into a free 25-code -> 25-letter bijection -- an
+# Aristocrat over 25 symbols, hence -logprob. ~239 letters (square KNIGHTSTEMPLAR, BLACK/WHITE). The
+# COMPLEX case (b) (two keywords per axis, homophonic) is NOT in the suite: its pairing pre-pass needs
+# ~400-600+ letters to rank the truth first, above the ACA range -- see tests/test_checkerboard_solver.c.
+fast | checkerboard_pp      | checkerboard  | checkerboard_pp.txt     | -logprob -nrestarts 12 -nhillclimbs 200000
 EOF
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }

@@ -173,6 +173,14 @@ Polygraphic squares/cubes/matrix:
 - `44` adfgx · `45` adfgvx/adfg · `46/47/48` nihilist-sub[-nc/-m100]/nihsub.
 - `54` bazeries/baz · `55` portax/ptx · `59/60/61` slidefair[-var/-beau]/sf.
 - `62` seriated-playfair/spf · `63` digrafid/df · `64` cm-bifid/cmb · `65` trisquare/3sq.
+- `82` checkerboard/checker/cb (keyed 5x5 square, 25-letter J->I; plaintext letter -> (row label,
+  col label) digraph). Case auto-detected PER AXIS from the ciphertext (an axis with >5 distinct
+  labels is complex). Label ORDER is not identifiable (absorbed by a row/col permutation of the
+  square, like nihilist-sub). SIMPLE (1 label/axis) ⇒ a free 25-code→25-letter bijection = an
+  Aristocrat over the merged codes, on the homophonic incremental fast path. COMPLEX (2 labels/axis,
+  homophonic) ⇒ a square-INDEPENDENT per-axis χ² homogeneity pre-pass ranks the label PAIRINGS
+  (top-K per axis crossed into engine configs). Simple recovers ~100% from ~130 letters; complex
+  needs ~400-600+ (below the ACA 60-90 range — see notable findings). -logprob.
 
 Morse / checkerboard (digit-stream input parsed from `ciphertext_str`):
 - `70` fractionated-morse/fm · `74` pollux/pol · `75` morbit/mor · `76` straddling/sc ·
@@ -294,6 +302,15 @@ Documented structural facts (asserted or characterized in the solver tests), not
   random breaks.
 - **Tri-Square** — easier than Four-Square despite 75 cells: the polyphonic c0/c2 letters
   must randomize on encode (a canonical choice starves the gradient).
+- **Checkerboard** — the SIMPLE case reduces exactly to an Aristocrat over 25 merged codes
+  (recovers ~100% from ~130 letters). The **COMPLEX case sits BELOW the ACA 60–90 range**: the
+  per-axis pairing statistic has an O(N) bias favouring wrong pairings against an O(N²) signal, so
+  the true pairing does not rank first until ~400–600 plaintext letters (the calibrated rank curve
+  in `test_checkerboard_solver.c` — r323 at N=90 → r0 at N=600). Documented limitation, like
+  Tridigital / CM-Bifid even periods — not a solver bug. The label KEYWORDS (BLACK/WHITE/…) are
+  unrecoverable ciphertext-only (label order folds into the square). The ACA square is
+  spiral-routed (keyword+tail read clockwise); the route matters only to the generator/tests, not
+  the solver (which searches the composite code→letter map).
 
 ## SearchDefaults (per-type schedules)
 

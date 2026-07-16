@@ -290,6 +290,10 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "td"))
         return TRIDIGITAL;
 
+    // Checkerboard (keyed 5x5 square; plaintext letter -> row/col label digraph).
+    if (str_eq(arg, "checkerboard") || str_eq(arg, "checker") || str_eq(arg, "cb"))
+        return CHECKERBOARD;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -382,6 +386,7 @@ const char *cipher_type_name(int type) {
         case ARISTOCRAT:              return "Aristocrat";
         case PATRISTOCRAT:            return "Patristocrat";
         case TRIDIGITAL:              return "Tridigital";
+        case CHECKERBOARD:            return "Checkerboard";
         default:                      return NULL;
     }
 }
@@ -476,6 +481,7 @@ const char *cipher_type_aliases(int type) {
         case ARISTOCRAT:              return "aristocrat, arist, aris";
         case PATRISTOCRAT:            return "patristocrat, patrist, patri, pat";
         case TRIDIGITAL:              return "tridigital, tridigit, tridig, td";
+        case CHECKERBOARD:            return "checkerboard, checker, cb";
         default:                      return NULL;
     }
 }
