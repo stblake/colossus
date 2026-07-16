@@ -92,6 +92,7 @@ static void pcs_verbose_block(clock_t t0, long n_iter, int n_restarts,
     printf("%.2f\t[score]\n", score);
     printf("gaps=%d drops=%d %s\t[params]\n\n", ni, nd, stg);
     print_text((int *) decrypt, len); printf("\n");
+    print_solution_check((int *) decrypt, len);
     fflush(stdout);
 }
 

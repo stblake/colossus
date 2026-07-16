@@ -177,7 +177,9 @@ static double shotgun_indep_climber(ColossusConfig *cfg,
                     printf("\n");
                 }
                 printf("\n");
-                print_text(decrypted, cipher_len); printf("\n"); fflush(stdout);
+                print_text(decrypted, cipher_len); printf("\n");
+                print_solution_check(decrypted, cipher_len);
+                fflush(stdout);
             }
         }
     }

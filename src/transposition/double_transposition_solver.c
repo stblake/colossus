@@ -602,6 +602,7 @@ void dct_solve_core(const int *cipher, int len, ColossusConfig *cfg,
                 printf("%.2f\t[chi-squared]\n", chi_squared(pt, len));
                 printf("%.2f\t[score]\n", sc);
                 print_text(pt, len); printf("\n");
+                print_solution_check(pt, len);
                 fflush(stdout);
             }
         }
@@ -655,6 +656,7 @@ void solve_double_transposition(char *ciphertext_str, char *cribtext_str,
     print_text(cipher_indices, cipher_len); printf("\n");
     print_text(res.plaintext, cipher_len); printf("\n");
     print_spaces_line(g_spaces_table, res.plaintext, cipher_len);
+    print_solution_check(res.plaintext, cipher_len);
 
     // Crib line + per-position match row (matches the columnar solver's report):
     // '_' where no crib, else |decrypted - crib| (a digit, or '*' if >= 10).

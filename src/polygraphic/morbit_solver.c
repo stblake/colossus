@@ -119,6 +119,7 @@ void solve_morbit(char *ciphertext_str, char *cribtext_str,
     printf("%s\n", cipherstr);
     print_text(best_pt, n);
     printf("\n");
+    print_solution_check(best_pt, n);
     print_spaces_line(g_spaces_table, best_pt, n);
     printf("%s\n", cribtext_str ? cribtext_str : "");
 
