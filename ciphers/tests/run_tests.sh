@@ -205,6 +205,11 @@ slow | cadenus_aca         | cadenus       | cadenus_aca.txt         | -nrestart
 slow | nihilist_aca        | nihilist      | nihilist_aca.txt        | -nrestarts 400 -nhillclimbs 6000
 slow | swagman_aca         | swagman       | swagman_aca.txt         | -nrestarts 300 -nhillclimbs 6000
 fast | grille_aca          | grille        | grille_aca.txt          | -nrestarts 300 -nhillclimbs 6000
+# Sequence Transposition (ACA): chain-addition digit sequence buckets each letter into 1 of 10
+# columns; a keyword sets the column read order. The primer is transmitted in ACA (-primer);
+# only the 10-bucket read order is searched. Needs -logprob (the interleaving gams reward-only).
+# See tests/test_sequence_transposition*.c.
+fast | sequence_transposition_pp | st       | sequence_transposition_pp.txt | -logprob -primer 31415 -nrestarts 40 -nhillclimbs 20000
 # Period column order (AZdecrypt): periodic column-permutation transposition, composed to 2 stages.
 # Deterministic exhaustive solver (no -nrestarts/-nhillclimbs); this 168-letter case is a two-stage
 # cipher (56x3 UTP P:2 then 4x42 TP P:3) the solver inverts. See tests/test_period_column*.c.

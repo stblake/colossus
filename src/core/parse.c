@@ -294,6 +294,10 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "checkerboard") || str_eq(arg, "checker") || str_eq(arg, "cb"))
         return CHECKERBOARD;
 
+    if (str_eq(arg, "sequence-transposition") || str_eq(arg, "sequencetransposition") ||
+        str_eq(arg, "seqtrans") || str_eq(arg, "seqtransposition") || str_eq(arg, "st"))
+        return SEQUENCE_TRANSPOSITION;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -387,6 +391,7 @@ const char *cipher_type_name(int type) {
         case PATRISTOCRAT:            return "Patristocrat";
         case TRIDIGITAL:              return "Tridigital";
         case CHECKERBOARD:            return "Checkerboard";
+        case SEQUENCE_TRANSPOSITION:  return "Sequence Transposition";
         default:                      return NULL;
     }
 }
@@ -482,6 +487,7 @@ const char *cipher_type_aliases(int type) {
         case PATRISTOCRAT:            return "patristocrat, patrist, patri, pat";
         case TRIDIGITAL:              return "tridigital, tridigit, tridig, td";
         case CHECKERBOARD:            return "checkerboard, checker, cb";
+        case SEQUENCE_TRANSPOSITION:  return "sequence-transposition, seqtrans, st";
         default:                      return NULL;
     }
 }

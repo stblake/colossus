@@ -165,6 +165,15 @@ Transposition (isolated by an early branch in `solve_cipher`, optimization not k
 - `14` transmatrix · `15` transperoffset · `16` transposition · `17` transcol · `18` transcol2.
 - `41` transcol-l/coltrack · `42` transroutecol/routecol · `43` transtile/tile.
 - `71` period-column/pcol · `72` period-column-space/pcolsp · `73` transcol2-dc/dcol.
+- `83` sequence-transposition/seqtrans/st (ACA): a Gromark chain-addition digit sequence (5-digit
+  primer) buckets each plaintext letter into 1 of 10 columns; a 10-letter keyword ranks the columns
+  into a read-out order. The unknown is the 10-bucket read-order permutation (a small transposition
+  climb, CipherModel/SHAPE_ANNEAL so all three -method schedules apply). The primer is transmitted in
+  ACA (`-primer 69315`) ⇒ a fast, reliable pure read-order search (~100% from ~60 letters, -logprob).
+  Without `-primer` a Gromark-style pre-pass ranks the 10^5 primer space, but that is a documented
+  limitation: 10^5 primers each game the n-gram, so the true primer rarely wins the global max even
+  at 300 letters. Reuses `gromark_chain_key`. -logprob effectively required (the interleaving gams
+  reward-only quadgrams).
 - Plus railfence/route/amsco/myszkowski/redefence/cadenus/nihilist/swagman/grille solvers.
 
 Polygraphic squares/cubes/matrix:

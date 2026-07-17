@@ -255,6 +255,7 @@
 #include "monome_dinome_solver.h"
 #include "tridigital_solver.h"
 #include "checkerboard_solver.h"
+#include "sequence_transposition_solver.h"
 #include "ragbaby_solver.h"
 #include "aristocrat_solver.h"
 #include "spaces.h"
@@ -295,7 +296,8 @@ void init_config(ColossusConfig *cfg) {
     cfg->startkey = 0;
     cfg->max_period = 0;        // 0 => derive from ciphertext length (min(20, len/2))
     cfg->n_periods = 5;         // anneal the estimator's top-K candidate periods
-    cfg->n_primers = 0;         // Gromark pre-pass top-K (0 => auto by ciphertext length)
+    cfg->n_primers = 0;         // Gromark / Sequence Transposition pre-pass top-K (0 => auto by length)
+    cfg->seq_primer_len = 0;    // Sequence Transposition: 0 => primer not supplied (blind pre-pass)
 
     cfg->plaintext_keyword_len_present = false;
     cfg->ciphertext_keyword_len_present = false;
@@ -703,6 +705,8 @@ static void print_help(const char *prog) {
 "  -cribanchored           Use the crib as a structural column-order constraint.[off]\n"
 "  -tile <h> <w>           Sub-grid tile shape for transtile.                [2 2]\n"
 "  -depth <1|2>            Period-column: max composed stages searched.         [2]\n"
+"  -primer <digits>        Sequence Transposition: the transmitted chain-addition primer\n"
+"                          (e.g. 69315). Omit to recover it by a blind pre-pass.  [blind]\n"
 "  -maxgaps <n>            Period-column-space: max inserted gap cells.         [4]\n"
 "  -maxdels <n>            Period-column-space: max deleted observed cells.     [2]\n"
 "  -transperoffset <o> <p> Post-decrypt periodic-decimation transposition stage.\n"
@@ -1173,6 +1177,15 @@ int main(int argc, char **argv) {
             cfg.startkey_present = true;
             cfg.startkey = atoi(argv[++i]);
             printf("-startkey %d\n", cfg.startkey);
+        } else if (strcmp(argv[i], "-primer") == 0) {
+            // Sequence Transposition: the transmitted chain-addition primer, as digits (e.g.
+            // 69315). When given the solver skips the blind primer pre-pass. Length sets P.
+            const char *s = argv[++i];
+            int P = 0;
+            for (int j = 0; s[j] && P < SEQ_TRANS_MAX_PRIMER; j++)
+                if (s[j] >= '0' && s[j] <= '9') cfg.seq_primer[P++] = s[j] - '0';
+            cfg.seq_primer_len = P;
+            printf("-primer %.*s (P=%d)\n", P, s, P);
         } else {
             printf("\n\nERROR: unknown command line arg: \'%s\'\n\n", argv[i]);
             return 0;
@@ -1337,6 +1350,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Tridigital cipher (keyed 3x10 block; digit-per-letter with a word-separator digit, ambiguous decode).\n\n");
     } else if (cfg.cipher_type == CHECKERBOARD) {
         printf("\nAttacking a Checkerboard cipher (keyed 5x5 square; plaintext letter -> row/col label digraph; simple/complex auto-detected).\n\n");
+    } else if (cfg.cipher_type == SEQUENCE_TRANSPOSITION) {
+        printf("\nAttacking a Sequence Transposition cipher (chain-addition digit sequence buckets each letter into 1 of 10 columns; keyword sets the column read order).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1809,6 +1824,13 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         // Keyed 5x5 square; plaintext letter -> (row label, col label) digraph. Auto-detects
         // simple/complex per axis; searches the square (+ label pairing for the complex case).
         solve_checkerboard(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == SEQUENCE_TRANSPOSITION) {
+        // Chain-addition digit sequence buckets each letter into 1 of 10 columns; a keyword sets
+        // the column read order (a transposition). Primer given (-primer) or blind pre-pass.
+        solve_sequence_transposition(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

@@ -111,8 +111,9 @@ typedef struct CribDrag {
 #define PATRISTOCRAT       80  // Patristocrat: the same monoalphabetic substitution WITHOUT word divisions (5-letter groups)
 #define TRIDIGITAL         81  // Tridigital: keyed 3x10 block, digit-per-letter with a word-separator digit (ambiguous 3-to-1 decode)
 #define CHECKERBOARD       82  // Checkerboard (ACA): plaintext letter -> (row label, col label) digraph over a keyed 5x5 square; simple (1 label/axis) or complex (2 labels/axis, homophonic)
+#define SEQUENCE_TRANSPOSITION 83  // Sequence Transposition (ACA): chain-addition digit sequence buckets each plaintext letter into one of 10 columns; a 10-letter keyword sets the bucket read-out order (a transposition)
 
-#define N_CIPHER_TYPES     83   // number of real cipher-type codes (0..82 inclusive)
+#define N_CIPHER_TYPES     84   // number of real cipher-type codes (0..83 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
@@ -192,6 +193,16 @@ enum { NIH_ADD_CARRY = 0,    // integer add with carry (ACA standard): cipher 22
 // plain Polybius fill. Only the generator/tests care -- the solver searches the composite
 // code->letter map and never sees the route.
 enum { CB_ROUTE_ROWMAJOR = 0, CB_ROUTE_SPIRAL_CW = 1 };
+
+// Sequence Transposition (ACA): a chain-addition digit sequence (one digit 0..9 per plaintext
+// letter, same recurrence as Gromark) drops each letter into one of 10 columns keyed by its
+// digit; a 10-letter keyword ranks the columns into a read-out order. The cryptanalytic unknown
+// is that read-order permutation of the 10 buckets (10!); the primer (default 5 digits) is
+// transmitted in the ACA convention, so the solver either takes it (-primer) or recovers it by a
+// Gromark-style primer pre-pass.
+#define SEQ_TRANS_BUCKETS    10  // digit columns 0..9 (fixed: chain-addition digits are 0..9)
+#define SEQ_TRANS_PRIMER_LEN  5  // ACA standard primer length (chain-addition lag)
+#define SEQ_TRANS_MAX_PRIMER  8  // largest primer length the solver/parser accept
 
 #define TRIFID_SIDE 3           // Trifid cube side (the classic 3x3x3)
 #define TRIFID_CELLS 27         // Trifid cube size (TRIFID_SIDE^3) == the 27-symbol alphabet
@@ -325,7 +336,13 @@ typedef struct {
     bool period_present;
     int max_period;
     int n_periods;
-    int n_primers;      // Gromark: top-K primers the pre-pass keeps to anneal (0 => auto by length)
+    int n_primers;      // Gromark / Sequence Transposition: top-K primers the pre-pass keeps (0 => auto by length)
+
+    // Sequence Transposition: the chain-addition PRIMER. seq_primer_len == 0 means the primer
+    // was not supplied (-primer) and the solver runs a blind primer pre-pass; otherwise
+    // seq_primer[0..seq_primer_len-1] is the known primer (the ACA convention transmits it).
+    int seq_primer[SEQ_TRANS_MAX_PRIMER];
+    int seq_primer_len;
 
     // Progressive Key: pin the per-group progression index (else the solver sweeps 0..25).
     bool progression_present;
@@ -817,6 +834,19 @@ void gromark_periodic_decrypt(const int cipher[], int len, const int sigma[],
                      const int primer[], int period, const int offsets[], int out[]);
 void gromark_decrypt_core(const int cipher[], int len, const int sigma_inv[],
                      const int d[], const int offsets[], int period, int out[]);
+
+// Sequence Transposition cipher (sequence_transposition.c). The Gromark chain-addition digit
+// sequence (gromark_chain_key) labels each of the `len` plaintext positions with a digit 0..9;
+// letters are gathered column-by-column (all SS==0, then all SS==1, ...) and the columns are
+// read off in the order given by a 10-entry read-order permutation `pi` (pi[k] = the digit
+// column emitted at read step k). Encryption concatenates the columns in pi order; decryption
+// redistributes the ciphertext back to plaintext positions. pi is derived from a 10-letter
+// keyword by stable alphabetical rank (rank 1..10, with 10 written as digit 0).
+void sequence_transposition_pi_from_keyword(const char *keyword, int pi[]);
+void sequence_transposition_encrypt(const int plain[], int len, const int primer[],
+                     int primer_len, const int pi[], int out[]);
+void sequence_transposition_decrypt(const int cipher[], int len, const int primer[],
+                     int primer_len, const int pi[], int out[]);
 
 // Beaufort cipher
 void beaufort_decrypt(int decrypted[], int cipher_indices[], int cipher_len, 
