@@ -112,8 +112,10 @@ typedef struct CribDrag {
 #define TRIDIGITAL         81  // Tridigital: keyed 3x10 block, digit-per-letter with a word-separator digit (ambiguous 3-to-1 decode)
 #define CHECKERBOARD       82  // Checkerboard (ACA): plaintext letter -> (row label, col label) digraph over a keyed 5x5 square; simple (1 label/axis) or complex (2 labels/axis, homophonic)
 #define SEQUENCE_TRANSPOSITION 83  // Sequence Transposition (ACA): chain-addition digit sequence buckets each plaintext letter into one of 10 columns; a 10-letter keyword sets the bucket read-out order (a transposition)
+#define GRANDPRE           84  // Grandpre (ACA): N x N word square; each plaintext letter -> a 2-digit (row,col) code of any cell holding it (homophonic over <= N^2 numeric codes -> 26 letters)
+#define SYLLABARY          85  // Syllabary (ACA): 10x10 square of 100 fixed syllabary tokens; each plaintext element -> a 2-digit (row,col) code (substitution over 100 codes -> 100 known 1-3 letter tokens, length-changing)
 
-#define N_CIPHER_TYPES     84   // number of real cipher-type codes (0..83 inclusive)
+#define N_CIPHER_TYPES     86   // number of real cipher-type codes (0..85 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)

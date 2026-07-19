@@ -1222,6 +1222,25 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 60, .s_n_hill_climbs = 200000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Grandpre: decoding is code -> letter, so the search is a HOMOPHONIC map over <= N^2
+    // numeric codes -> 26 letters (single-symbol reassignment moves on the incremental fast
+    // path). Shares the homophonic/aristocrat annealed-square profile; restarts are the lever
+    // (undersampled ~64-code map over the ACA range is bimodal). Best with -logprob.
+    { .cipher_type = GRANDPRE, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 16, .a_n_hill_climbs = 200000,
+      .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 60, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Syllabary: a 100-token composite-map substitution with a length-changing (tiled) decode.
+    // Two-code swap moves on the generic path; more restarts (the 100-token bijection over ~150
+    // codes is severely undersampled and strongly bimodal). Same aristocrat temp scale. -logprob.
+    { .cipher_type = SYLLABARY, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 24, .a_n_hill_climbs = 300000,
+      .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 80, .s_n_hill_climbs = 300000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 
 bool apply_cipher_defaults(ColossusConfig *cfg, bool announce) {

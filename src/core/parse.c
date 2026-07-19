@@ -298,6 +298,14 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "seqtrans") || str_eq(arg, "seqtransposition") || str_eq(arg, "st"))
         return SEQUENCE_TRANSPOSITION;
 
+    // Grandpre (N x N word square; plaintext letter -> a 2-digit (row,col) code, homophonic).
+    if (str_eq(arg, "grandpre") || str_eq(arg, "grandpré") || str_eq(arg, "gp"))
+        return GRANDPRE;
+
+    // Syllabary (10x10 square of 100 syllabary tokens; plaintext element -> a 2-digit code).
+    if (str_eq(arg, "syllabary") || str_eq(arg, "syll") || str_eq(arg, "sy"))
+        return SYLLABARY;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -392,6 +400,8 @@ const char *cipher_type_name(int type) {
         case TRIDIGITAL:              return "Tridigital";
         case CHECKERBOARD:            return "Checkerboard";
         case SEQUENCE_TRANSPOSITION:  return "Sequence Transposition";
+        case GRANDPRE:                return "Grandpre";
+        case SYLLABARY:               return "Syllabary";
         default:                      return NULL;
     }
 }
@@ -488,6 +498,8 @@ const char *cipher_type_aliases(int type) {
         case TRIDIGITAL:              return "tridigital, tridigit, tridig, td";
         case CHECKERBOARD:            return "checkerboard, checker, cb";
         case SEQUENCE_TRANSPOSITION:  return "sequence-transposition, seqtrans, st";
+        case GRANDPRE:                return "grandpre, gp";
+        case SYLLABARY:               return "syllabary, syll, sy";
         default:                      return NULL;
     }
 }

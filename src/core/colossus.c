@@ -256,6 +256,8 @@
 #include "tridigital_solver.h"
 #include "checkerboard_solver.h"
 #include "sequence_transposition_solver.h"
+#include "grandpre_solver.h"
+#include "syllabary_solver.h"
 #include "ragbaby_solver.h"
 #include "aristocrat_solver.h"
 #include "spaces.h"
@@ -439,7 +441,7 @@ static bool cipher_type_plausible(int type, const char *cipher) {
 
     bool digit_family = (type == POLLUX || type == MORBIT ||
                          type == STRADDLING_CHECKERBOARD || type == MONOME_DINOME ||
-                         type == TRIDIGITAL ||
+                         type == TRIDIGITAL || type == GRANDPRE || type == SYLLABARY ||
                          type == NIHILIST_SUB || type == NIHILIST_SUB_NC ||
                          type == NIHILIST_SUB_M100);
 
@@ -1352,6 +1354,10 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Checkerboard cipher (keyed 5x5 square; plaintext letter -> row/col label digraph; simple/complex auto-detected).\n\n");
     } else if (cfg.cipher_type == SEQUENCE_TRANSPOSITION) {
         printf("\nAttacking a Sequence Transposition cipher (chain-addition digit sequence buckets each letter into 1 of 10 columns; keyword sets the column read order).\n\n");
+    } else if (cfg.cipher_type == GRANDPRE) {
+        printf("\nAttacking a Grandpre cipher (N x N word square; each plaintext letter -> a 2-digit (row,col) code of any cell holding it; homophonic over numeric codes).\n\n");
+    } else if (cfg.cipher_type == SYLLABARY) {
+        printf("\nAttacking a Syllabary cipher (10x10 square of 100 fixed syllabary tokens; each plaintext element -> a 2-digit (row,col) code; substitution over 100 codes -> known 1-3 letter tokens).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1831,6 +1837,20 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         // Chain-addition digit sequence buckets each letter into 1 of 10 columns; a keyword sets
         // the column read order (a transposition). Primer given (-primer) or blind pre-pass.
         solve_sequence_transposition(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == GRANDPRE) {
+        // Parses the digit stream from ciphertext_str into 2-digit codes; homophonic map
+        // (code -> letter) over the N x N word square, searched on the homophonic fast path.
+        solve_grandpre(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == SYLLABARY) {
+        // Parses the digit stream into 2-digit codes; composite code -> token bijection over the
+        // fixed 100-token syllabary alphabet, annealed with a tiled length-fair n-gram score.
+        solve_syllabary(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

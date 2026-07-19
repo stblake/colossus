@@ -190,6 +190,23 @@ Polygraphic squares/cubes/matrix:
   homophonic) ⇒ a square-INDEPENDENT per-axis χ² homogeneity pre-pass ranks the label PAIRINGS
   (top-K per axis crossed into engine configs). Simple recovers ~100% from ~130 letters; complex
   needs ~400-600+ (below the ACA 60-90 range — see notable findings). -logprob.
+- `84` grandpre/gp (ACA; digit-stream CT parsed from `ciphertext_str`): an N×N word square (N
+  6..10, 8×8 standard; rows are words, first column a word, all 26 letters present). Each letter →
+  a 2-digit (row,col) code of ANY cell holding it. DECODE is unique (code→letter), ENCODE is
+  many-to-one ⇒ a HOMOPHONIC substitution over ≤N² numeric codes → 26 letters. Solver interns the
+  codes and reuses the homophonic incremental fast path (the Checkerboard-SIMPLE twin); labels are
+  the grid indices so the actual square is recovered directly. Recovers ~93% @285 / ~99% modulo
+  rare-letter homophones (Q/X/Z/J) at longer lengths — characterized, below the 99% suite bar.
+  -logprob (+ quintgrams).
+- `85` syllabary/syll/sy (ACA; digit-stream CT): a 10×10 square of a FIXED 100-element syllabary
+  alphabet (26 letters, digits 1-9, a null, 64 syllables like THE/ING/RED). Each plaintext element
+  → a 2-digit (row-label,col-label) code; variant spellings (isologs) flatten frequency. DECODE is
+  a unique bijection code→token (1-3 letters, LENGTH-CHANGING). Solver climbs the composite 100-token
+  code→token permutation (SHAPE_ANNEAL, two-code swap) with the decode TILED into a fixed scoring
+  buffer for a length-fair mean n-gram (Fractionated-Morse pattern); the label order folds into the
+  map so this one search subsumes all three Known/Unknown variants. BLIND recovery is a documented
+  limitation (see notable findings): the syllable tokens are n-gram magnets, so the search games the
+  fitness at ACA lengths. -logprob (+ quintgrams).
 
 Morse / checkerboard (digit-stream input parsed from `ciphertext_str`):
 - `70` fractionated-morse/fm · `74` pollux/pol · `75` morbit/mor · `76` straddling/sc ·
@@ -320,6 +337,25 @@ Documented structural facts (asserted or characterized in the solver tests), not
   unrecoverable ciphertext-only (label order folds into the square). The ACA square is
   spiral-routed (keyword+tail read clockwise); the route matters only to the generator/tests, not
   the solver (which searches the composite code→letter map).
+- **Grandpré** — cryptanalytically a homophonic substitution over ≤N² numeric codes → 26 letters,
+  so it reuses the homophonic incremental fast path verbatim. Strong solver (calibrated curve in
+  `test_grandpre_solver.c`: ~0.36 @150 → ~0.84 @200 → ~0.93 @285), but plateaus ~98.7% at longer
+  lengths — the residual errors are the RARE-LETTER homophones (Q/X/Z/J appear too few times to pin
+  their cells), so it stays just under the 99% suite bar. Omitted from `run_tests.sh` and
+  characterized via the solver test, like Tridigital. Labels are the grid indices (not scrambled),
+  so the actual square is recovered directly — no label ambiguity, unlike Checkerboard/Syllabary.
+- **Syllabary** — a substitution over 100 codes → 100 KNOWN 1-3 letter tokens, with a
+  length-changing decode tiled into a fixed scoring buffer (Fractionated-Morse pattern). BLIND
+  recovery is a documented limitation MORE severe than Checkerboard-complex: the 100-token set
+  includes common syllables (THE, AND, ING, RE, …) that act as **n-gram magnets**, so the search
+  assembles fluent-but-wrong English and the true map never wins the global n-gram max — it games
+  even a 22-symbol (single-letter-token) instance (`test_syllabary_solver.c` prints ~0.06-0.12
+  true-letter recovery at ACA lengths; decode correctness itself is pinned by the four ACA isolog
+  KAT vectors in `test_syllabary.c`). Whole-word coverage does not discriminate either (the gamed
+  output is full of real words). The 100-token composite-map search subsumes all three ACA
+  Known/Unknown Coordinates × Keysquare variants; the label order and canonical unmixed token order
+  fold into the map and are not identifiable ciphertext-only. The tractable attack (untapped) is the
+  KNOWN-KEYSQUARE variant (search only the 10!×10! label perms).
 
 ## SearchDefaults (per-type schedules)
 
