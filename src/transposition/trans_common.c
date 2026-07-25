@@ -33,6 +33,7 @@ void report_transposition(ColossusConfig *cfg, SharedData *shared,
     printf("\n");
     print_text(best_decrypted, cipher_len);
     printf("\n");
+    print_solution_check(best_decrypted, cipher_len);
     print_spaces_line(g_spaces_table, best_decrypted, cipher_len);
     printf("%s\n", cribtext_str);
 
@@ -80,6 +81,7 @@ void report_transposition_verbose(const SolverCtx *ctx, double best_score,
     printf("%.2f\t[score]\n", best_score);
     printf("%s\t[params]\n\n", param_summary);
     print_text(best_decrypted, ctx->cipher_len); printf("\n");
+    print_solution_check(best_decrypted, ctx->cipher_len);
     fflush(stdout);
 }
 

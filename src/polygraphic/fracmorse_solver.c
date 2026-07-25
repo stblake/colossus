@@ -170,6 +170,7 @@ static void fracmorse_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(g_fm_decode, m);
     printf("\n");
+    print_solution_check(g_fm_decode, m);
     print_spaces_line(g_spaces_table, g_fm_decode, m);
     printf("%s\n", ctx->cribtext);
 

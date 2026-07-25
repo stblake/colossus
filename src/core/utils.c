@@ -222,6 +222,45 @@ void print_text(int indices[], int len) {
 
 
 
+char g_check_solution[MAX_CHECK_SOLUTION_LEN + 1];
+int  g_check_solution_len = 0;
+
+void load_check_solution(const char *filename, bool verbose) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        printf("-check-solution-file: failed to open '%s', check-solution-file will have no effect\n", filename);
+        return;
+    }
+    int c, len = 0;
+    while (len < MAX_CHECK_SOLUTION_LEN && (c = fgetc(fp)) != EOF) {
+        if (isspace((unsigned char) c)) continue;
+        g_check_solution[len++] = (char) toupper((unsigned char) c);
+    }
+    fclose(fp);
+    g_check_solution[len] = '\0';
+    g_check_solution_len = len;
+    if (verbose)
+        printf("-check-solution-file: loaded %d letters from '%s'\n", len, filename);
+}
+
+void print_solution_check(int indices[], int len) {
+    if (g_check_solution_len == 0) return;
+    int n = (len < g_check_solution_len) ? len : g_check_solution_len;
+    int n_match = 0;
+    for (int i = 0; i < n; i++) {
+        char c = (char) index_to_char(indices[i]);
+        if (c == g_check_solution[i]) {
+            putchar(c);
+            n_match++;
+        } else {
+            putchar('.');
+        }
+    }
+    printf("\n%.2f%% correct\n", (n == 0) ? 0.0 : (100.0 * n_match / n));
+}
+
+
+
 void ord(char *text, int indices[]) {
     for (int i = 0; i < strlen(text); i++) {
         unsigned char c = (unsigned char) text[i];

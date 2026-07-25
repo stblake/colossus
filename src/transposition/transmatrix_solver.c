@@ -137,6 +137,7 @@ static void transmat_report_verbose(const SolverCtx *ctx, const SolverConfig *cc
     }
     printf("\n");
     print_text(buf, ctx->cipher_len); printf("\n");
+    print_solution_check(buf, ctx->cipher_len);
     fflush(stdout);
 }
 
@@ -177,6 +178,7 @@ static void transmat_report(const SolverCtx *ctx, const SolverConfig *cc,
     print_text(decrypted, cipher_len);
     printf("\n");
     print_spaces_line(g_spaces_table, decrypted, cipher_len);
+    print_solution_check(decrypted, cipher_len);
     printf("%s\n", cribtext_str);
 
     if (PARTIAL_CRIB_MATCH && n_cribs > 0) {

@@ -170,6 +170,7 @@ void solve_period_column(char *ciphertext_str, char *cribtext_str,
             printf("%.2f\t[score]\n", s);
             printf("%s\t[params]\n\n", p);
             print_text(dec, cipher_len); printf("\n");
+            print_solution_check(dec, cipher_len);
             fflush(stdout);
         }
 

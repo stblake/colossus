@@ -189,6 +189,7 @@ static void columnar_model_report_verbose(const SolverCtx *ctx, const SolverConf
             dir[s] == COL_READ_BT ? "bt" : "tb");
     printf("\n");
     print_text(buf, ctx->cipher_len); printf("\n");
+    print_solution_check(buf, ctx->cipher_len);
     fflush(stdout);
 }
 
@@ -228,6 +229,7 @@ static void columnar_model_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf("\n");
     print_text(decrypted, cipher_len);
     printf("\n");
+    print_solution_check(decrypted, cipher_len);
     print_spaces_line(g_spaces_table, decrypted, cipher_len);
     printf("%s\n", cribtext_str);
 
