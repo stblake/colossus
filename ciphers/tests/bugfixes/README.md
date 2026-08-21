@@ -36,4 +36,4 @@ Fixed to loop on `fscanf(...) == 2`.
 (final line `ZZZZ` with no count) the old loader injects a bogus `ZZZZ` entry and
 inflates the total; the new loader ignores it. On the well-formed file the two are
 identical, confirming the fix is a no-op for valid input (e.g. the real
-`english_quadgrams.txt`).
+`ngram_data/english/english_quadgrams.txt`).

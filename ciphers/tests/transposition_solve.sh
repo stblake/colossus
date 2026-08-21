@@ -12,6 +12,6 @@
 SRC="$(cd "$(dirname "$0")/../.." && pwd)"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 "$SRC/colossus" -type transposition -cipher "$HERE/transposition_solve.txt" \
-  -ngramsize 4 -ngramfile "$SRC/english_quadgrams.txt" \
+  -ngramsize 4 -ngramfile "$SRC/ngram_data/english/english_quadgrams.txt" \
   -nrestarts 800 -nhillclimbs 5000 2>/dev/null \
   | grep -E 'Result Score|^[A-Z]{30}' | head -3

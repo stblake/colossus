@@ -82,7 +82,34 @@ src/substitution/    # monoalphabetic / homophonic
 makefile  README.md  LICENSE  example.sh
 cipher.txt  crib.txt              # sample ciphertext + crib
 tools/<type>_gen.c                # standalone per-type test-data generators (make <type>_gen)
-english_quadgrams.txt             # default n-gram table; english_quintgrams.txt optional (with -logprob)
+tools/build_corpus_ngrams.py      # build n-gram tables (orders 1-8) from raw corpus text (English format)
+tools/compress_ngrams.py          # text n-gram table -> dense 8-bit .ngbin (stdlib-only): the 26-letter
+                                  #   letter tables, or `--spaces` for the 27-symbol {A..Z,' '} tables; for
+                                  #   reduced letter alphabets use `-writengrambin` — see the .ngbin note below
+tools/build_corpus_spaces_ngrams.py # SPACE-INCLUSIVE sibling: keeps word spaces (window over {A..Z,' '}),
+                                  #   builds <lang>_spaces_*grams.txt for the -spaces readability pass
+tools/gutenberg_fetch.py          # enumerate + download Project Gutenberg books by language (gutendex)
+tools/{english,french,german,italian,spanish,latin,danish,portuguese}_corpus/  # each: list.tsv + MANIFEST (Gutenberg books; books/ git-ignored, re-downloadable)
+ngram_data/english/               # mono/bi/tri/six = corpus (798 books); quad+quint = EXTERNAL web-scale
+                                  #   (quadgrams = tracked default; quad/quint kept external for test calibration)
+ngram_data/french/                # french_{mono,bi,tri,quad,quint,six}grams.txt (built from ~448M letters, 976 books)
+ngram_data/german/                # german_{mono,bi,tri,quad,quint,six}grams.txt (built from ~650M letters, 2365 books)
+ngram_data/italian/               # italian_{mono,bi,tri,quad,quint,six}grams.txt (built from ~344M letters, 994 books)
+ngram_data/spanish/               # spanish_{mono,bi,tri,quad,quint,six}grams.txt (built from ~283M letters, 883 books)
+ngram_data/latin/                 # latin_{mono,bi,tri,quad,quint,six}grams.txt (built from ~24M letters, 88 books;
+                                  #   small Gutenberg holding + a 2-stage English-apparatus filter — see MANIFEST)
+ngram_data/danish/                # danish_{mono,bi,tri,quad,quint,six}grams.txt (built from ~21M letters, 83 books;
+                                  #   fold() gained ø->o, since ø has no NFKD decomposition — see MANIFEST)
+ngram_data/portuguese/            # portuguese_{mono,bi,tri,quad,quint,six}grams.txt (built from ~95M letters, 642 books;
+                                  #   all diacritics á/ã/ç/õ/… fold via NFKD, NO code change — see MANIFEST)
+ngram_data/dutch/                 # dutch_{mono,bi,tri,quad,quint,six}grams.txt (built from ~296M letters, 1096 books;
+                                  #   all diacritics + the IJ ligature ĳ/Ĳ fold via NFKD, NO code change; 2 EN-NL
+                                  #   dictionaries dropped by content not density — see MANIFEST)
+                                  # Each lang dir ALSO holds <lang>_spaces_{bi,tri,quad,quint,six}grams.txt:
+                                  #   SPACE-INCLUSIVE char n-grams over {A..Z,' '} (window may embed a literal
+                                  #   space; count split on the RIGHTMOST space) feeding -spaces (src/core/spaces.c).
+                                  #   All corpus-derived orders 2-6 (English spaces tables are corpus, unlike its
+                                  #   external letter-only quad/quint). Built by tools/build_corpus_spaces_ngrams.py.
 OxfordEnglishWords.txt            # default dictionary (auto-loaded if present in cwd)
 ciphers/kryptos/                  # K1–K4 ciphertexts + run scripts
 ciphers/tests/                    # per-cipher end-to-end cases + run_tests.sh
@@ -138,7 +165,7 @@ from cwd).
 ```bash
 ./example.sh
 # minimally:
-./colossus -type q3 -cipher cipher.txt -ngramsize 4 -ngramfile english_quadgrams.txt
+./colossus -type q3 -cipher cipher.txt -ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt
 ```
 
 Required: `-type`, a source (`-cipher <file>` or `-batch <file>`), `-ngramsize`,
@@ -208,6 +235,26 @@ Polygraphic squares/cubes/matrix:
   limitation (see notable findings): the syllable tokens are n-gram magnets, so the search games the
   fitness at ACA lengths. -logprob (+ quintgrams).
 
+Layered / concatenated (the Paradigm challenge, GitHub issue #5): an outer substitution
+composed over an inner transposition/substitution, all over the KRYPTOS keyed alphabet. A
+Quagmire III over a fixed keyed alphabet is a Vigenère in keyed-index space, so stacked Q
+layers SUM to one Quagmire of period lcm — give the component periods with `-cyclewordlens
+a,b` (searched over their components, ~N/len samples each, not ~N/lcm). Pin the alphabet with
+`-plaintextkeyword KRYPTOS`. -logprob (+ quintgrams).
+- `88` quagtrans/qtrans: outer Quagmire III o inner columnar transposition, `-depth {0,1,2}`
+  (0 = plain Quagmire / PK3; 1 = single columnar / PK4; 2 = double columnar / PK6). Strips the
+  outer Quagmire by the MONOGRAM statistic (transposition-invariant), solves the inner columnar
+  by n-gram (depth 1: beam over the column order, K≤8 exhaustive, `-mincols/-maxcols`; depth 2:
+  reuses `dct_solve_core`), then n-gram coordinate-ascends the cycleword COMPONENTS through the
+  recovered transposition. Solves the real PK3/PK4/PK6 to ~100% in seconds.
+- `89` hillquag/hq: outer Hill(k×k) o inner Quagmire III, `-period k` (default 3), `-cyclewordlen
+  P` (inner Quag period; required — the Hill hides it). Recovers the Hill DECRYPTION matrix by a
+  Quag-cycleword-INDEPENDENT statistic — when k|P each mod-P column of D·CT is fed by ONE matrix
+  row, so rows are scored by the (cosine-normalised) monogram fit of their columns; anchor k−1
+  rows and search the last exhaustively — then strips the Hill and solves the Quagmire. Tries the
+  matrix in BOTH the plain A..Z and KRYPTOS-keyed index spaces (the real PK7 is KRYPTOS-keyed).
+  Blind Hill is length-limited (floor ~280 chars); the real 279-char PK7 solves. -logprob.
+
 Morse / checkerboard (digit-stream input parsed from `ciphertext_str`):
 - `70` fractionated-morse/fm · `74` pollux/pol · `75` morbit/mor · `76` straddling/sc ·
   `78` monome-dinome/md (3x8 box, 24-letter J->I/Z->Y; needs quintgrams + dict — config
@@ -230,11 +277,29 @@ Substitution:
 - `-logprob` (a.k.a. `-azdecrypt`): AZDecrypt-style log10 n-gram fitness with an
   unseen-n-gram floor penalty, vs the default reward-only `log(1+count)` (unseen → 0).
   **Effectively required** for the square/fractionation types; pairs well with
-  quintgrams (`-ngramsize 5 -ngramfile english_quintgrams.txt`). Default off ⇒ unchanged.
+  quintgrams (`-ngramsize 5 -ngramfile ngram_data/english/english_quintgrams.txt`). Default off ⇒ unchanged.
 - `-reversengrams` (`-revngrams`): symmetrize the table so each n-gram and its reversed
   twin share the `max` weight — reads reversed-word text like clean English (for the W168
   alternate-word-reversal hypothesis). Roughly doubles the acceptable solution set.
   Default off ⇒ bit-identical.
+- **Compressed `.ngbin` n-gram tables.** A `-ngramfile` whose first 8 bytes are the magic
+  `COLNGBIN` is a **dense 8-bit** table (64-byte header + `g_alpha^n` bytes; byte *i* = the
+  8-bit-quantized log10 weight of the n-gram at big-endian index *i*, exactly
+  `ngram_index_str`'s packing). `load_ngrams` **mmaps** it and `ngram_score` scores via a
+  256-entry LUT (`g_ngram_lut[g_ngram_u8[idx]]`) — 1 byte/entry vs 4 (≈4× less RAM), and a
+  single mmap vs parsing millions of text lines (quintgram load+RSS ≈ 3×/7× cheaper). It
+  **implies `-logprob`** (the only mode stored) and is **alphabet-specific** (a 25-letter
+  J→I Bifid table is a different image from the 26-letter one; the reader validates
+  `alphabet_size == g_alpha`). Dense ⇒ practical only through order 6 (26⁶ = 309 MB;
+  26⁷ overflows the `int` walk index). Build one with `-writengrambin <file>` (dumps the
+  exact per-`-type` table then exits — correct for ANY alphabet) or, for plain 26-letter
+  tables, `tools/compress_ngrams.py`. `-reversengrams` is rejected with a `.ngbin` (the
+  mmap is read-only). The g_ngram_u8==NULL float path is byte-for-byte unchanged, so the
+  regression suite stays bit-identical. The **`-spaces` tables** (`-spacesngramfile`, the
+  27-symbol {A..Z,' '} alphabet, `load_spaces_ngrams` in `src/core/spaces.c`) accept the
+  **same** `.ngbin` format (header `alphabet_size == 27`); build them with
+  `compress_ngrams.py --spaces` (the spaces alphabet is fixed, so no per-type variant). The
+  `-spaces` pass is a one-shot report Viterbi, so it dequantizes through a per-table LUT.
 - `-cribdrag WORD` (or `WORDA|WORDB`): position-free crib. Each word is slid across the
   decrypt and its best-offset partial match rewarded (`-weightcribdrag`, default 36);
   pipe = AND (mean over words). A global toggle in `state_score`, so it works for
@@ -261,6 +326,9 @@ Substitution:
 - Post-decrypt transposition stage: `-transperoffset <offset> <period>` /
   `-transmatrix <w1> <w2> <cw|ccw>` (distinct from the `-type` transposition solvers;
   cribs are un-mapped back through it via `map_crib_to_cipher_pos`).
+- `-cyclewordlens a,b[,...]` (layered `quagtrans`): component periods of a composed
+  multi-Quagmire; the effective period is their lcm and the cycleword is searched over the
+  components (far more samples/parameter than the collapsed period).
 - Sweep/estimator/search knobs: `-period`, `-cyclewordlen`, `-mincols`/`-maxcols`,
   `-maxperiod`, `-nperiods`, `-blockheight`/`-maxblockheight`, `-depth` (period-column),
   `-readdir tb|bt|both`, `-readrowdir`, `-nprimers`, `-nrestarts`/`-nhillclimbs`,

@@ -91,7 +91,7 @@ static double run_case(const char *kw1, const char *kw2, int len, unsigned long 
     init_config(&cfg);
     cfg.cipher_type = TRANSCOL2_DC;
     cfg.ngram_size = 4;
-    strcpy(cfg.ngram_file, "english_quadgrams.txt");
+    strcpy(cfg.ngram_file, "ngram_data/english/english_quadgrams.txt");
     cfg.min_cols = lo; cfg.max_cols = hi;
     cfg.read_direction = COL_READ_TB;
     cfg.n_restarts = restarts; cfg.n_hill_climbs = iters;
@@ -145,7 +145,7 @@ static double run_case_spaces(const char *kw1, const char *kw2, int len,
     init_config(&cfg);
     cfg.cipher_type = TRANSCOL2_DC;
     cfg.ngram_size = 4;
-    strcpy(cfg.ngram_file, "english_quadgrams.txt");
+    strcpy(cfg.ngram_file, "ngram_data/english/english_quadgrams.txt");
     cfg.min_cols = lo; cfg.max_cols = hi;
     cfg.read_direction = COL_READ_TB;
     cfg.n_restarts = restarts; cfg.n_hill_climbs = iters;

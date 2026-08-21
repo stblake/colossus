@@ -26,7 +26,7 @@
 
 cd "$(dirname "$0")" || exit 2
 BIN=../../colossus
-NGRAMS=../../english_quadgrams.txt
+NGRAMS=../../ngram_data/english/english_quadgrams.txt
 NG="-ngramsize 4 -ngramfile $NGRAMS"
 COMMON="-backtrackprob 0.15 -slipprob 0.0005"
 SEED=${SEED:-1}
@@ -92,6 +92,13 @@ fast | q3_p127   | q3 | q3_p127.txt   | -plaintextkeywordlen 8 -ciphertextkeywor
 fast | q3_p128   | q3 | q3_p128.txt   | -plaintextkeywordlen 5 -ciphertextkeywordlen 5 -cyclewordlen 5 -nrestarts 200 -nhillclimbs 1000
 slow | q4_p130   | q4 | q4_p130.txt   | -plaintextkeywordlen 4 -ciphertextkeywordlen 7 -cyclewordlen 5 -nrestarts 800 -nhillclimbs 3000
 slow | q4_p131   | q4 | q4_p131.txt   | -plaintextkeywordlen 5 -ciphertextkeywordlen 5 -cyclewordlen 5 -nrestarts 800 -nhillclimbs 3000
+# --- Paradigm layered ciphers (GitHub issue #5): outer Quagmire/Hill over an inner
+#     transposition/Quagmire, all KRYPTOS-keyed. Quintgrams + -logprob. PK3/4/6 solve
+#     to ~100%; PK7's outer Hill is length-limited but the real 279-char puzzle solves.
+fast | paradigm_pk3 | quagtrans | paradigm_pk3.txt | -depth 0 -cyclewordlens 10,8 -plaintextkeyword KRYPTOS -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt
+slow | paradigm_pk4 | quagtrans | paradigm_pk4.txt | -depth 1 -cyclewordlens 5,9 -mincols 8 -maxcols 8 -readdir both -plaintextkeyword KRYPTOS -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt
+slow | paradigm_pk6 | quagtrans | paradigm_pk6.txt | -depth 2 -cyclewordlens 6 -mincols 9 -maxcols 9 -readdir both -nrestarts 300 -nhillclimbs 3000 -plaintextkeyword KRYPTOS -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt
+slow | paradigm_pk7 | hillquag | paradigm_pk7.txt | -period 3 -cyclewordlen 6 -plaintextkeyword KRYPTOS -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt
 # --- autokey ---
 fast | autokey_len97_wl8               | auto     | autokey_len97_wl8.txt               | -cyclewordlen 8  -nrestarts 8000 -nhillclimbs 800
 fast | autokey_len97_wl21              | auto     | autokey_len97_wl21.txt              | -cyclewordlen 21 -nrestarts 4000 -nhillclimbs 800
@@ -233,7 +240,7 @@ slow | straddling_pp       | sc            | straddling_pp.txt       | -logprob
 # (n-gram alone is gamed cross-config). NEEDS quintgrams + a dictionary; the extra args override
 # the default quadgram table and point -dictionary at the repo-root word list (run from this dir).
 # ~300 letters clears the rare-letter (P/Q/Y-Z) ceiling; see tests/test_monome_dinome*.c.
-slow | monome_dinome_pp    | md            | monome_dinome_pp.txt    | -logprob -ngramsize 5 -ngramfile ../../english_quintgrams.txt -dictionary ../../OxfordEnglishWords.txt
+slow | monome_dinome_pp    | md            | monome_dinome_pp.txt    | -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt -dictionary ../../OxfordEnglishWords.txt
 # Ragbaby (keyed 24-letter alphabet; per-letter shift = word-position number mod 24). A ~113-letter
 # spaced cipher (keyword CRYPTOGRAM) recovered by the keyed-alphabet anneal; the known per-letter
 # shift makes it ride the reward-only quadgram table (no -logprob). Word divisions drive the

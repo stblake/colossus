@@ -88,9 +88,9 @@ int main(void) {
     printf("  plaintext length = %d\n", n);
 
     // --- bigram table sanity -------------------------------------------------
-    double *bg = dct_load_bigrams("english_quadgrams.txt", 4);
+    double *bg = dct_load_bigrams("ngram_data/english/english_quadgrams.txt", 4);
     CHECK(bg != NULL, "dct_load_bigrams returned non-NULL");
-    if (!bg) { printf("  (cannot continue without english_quadgrams.txt)\n"); return 1; }
+    if (!bg) { printf("  (cannot continue without ngram_data/english/english_quadgrams.txt)\n"); return 1; }
     int TH = ('T' - 'A') * 26 + ('H' - 'A');
     int QZ = ('Q' - 'A') * 26 + ('Z' - 'A');
     int HE = ('H' - 'A') * 26 + ('E' - 'A');

@@ -114,8 +114,12 @@ typedef struct CribDrag {
 #define SEQUENCE_TRANSPOSITION 83  // Sequence Transposition (ACA): chain-addition digit sequence buckets each plaintext letter into one of 10 columns; a 10-letter keyword sets the bucket read-out order (a transposition)
 #define GRANDPRE           84  // Grandpre (ACA): N x N word square; each plaintext letter -> a 2-digit (row,col) code of any cell holding it (homophonic over <= N^2 numeric codes -> 26 letters)
 #define SYLLABARY          85  // Syllabary (ACA): 10x10 square of 100 fixed syllabary tokens; each plaintext element -> a 2-digit (row,col) code (substitution over 100 codes -> 100 known 1-3 letter tokens, length-changing)
+#define KEY_PHRASE         86  // Key Phrase (ACA): a 26-letter phrase IS the cipher alphabet, matched to straight a..z; the phrase repeats letters so decode is many-to-one (ambiguous) -> partition of a..z among the observed ct letters + inner beam-Viterbi
+#define AFFINE             87  // Affine: monoalphabetic CT = (a*PT + b) mod 26, gcd(a,26)=1; deterministic-exhaustive 12 multipliers x 26 shifts = 312 keys
+#define QUAG_TRANS         88  // Layered (Paradigm): outer Quagmire III (keyed alphabet) o inner columnar transposition, -depth {0,1,2}; strip Quag by monogram, solve transposition by n-gram, refine cycleword through it
+#define HILL_QUAG          89  // Layered (Paradigm): outer Hill(kxk) o inner Quagmire III; search the Hill matrix by the inner Quag's period-P columnar IoC (key-independent), then strip Hill and solve the Quagmire
 
-#define N_CIPHER_TYPES     86   // number of real cipher-type codes (0..85 inclusive)
+#define N_CIPHER_TYPES     90   // number of real cipher-type codes (0..89 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
@@ -368,6 +372,12 @@ typedef struct {
     bool plaintext_keyword_len_present;
     bool ciphertext_keyword_len_present;
     bool cycleword_len_present;
+
+    // Layered (QUAG_TRANS): component cycleword lengths of a composed multi-Quagmire
+    // (e.g. -cyclewordlens 5,9 for Q(5)Q(9)); the effective period is their lcm. The
+    // component parameterization gives each shift ~N/len samples instead of ~N/lcm.
+    int  cycleword_lens[8];
+    int  n_cycleword_lens;
 
     // Explicit User Keywords (Strings)
     char user_plaintext_keyword[ALPHABET_SIZE + 1];
@@ -1291,6 +1301,25 @@ void print_cipher(const int indices[], int len, const SymbolTable *tab);
 extern bool g_ngram_logprob;      // n-gram scoring mode (see utils.c); false = legacy
 extern bool g_ngram_reverse;      // reversal-invariant table (see utils.c); false = off
 extern double g_ngram_floor;      // per-window n-gram floor for the entropy term (utils.c)
+// Compressed (.ngbin) n-gram table. When a dense 8-bit table is mmap'd, g_ngram_u8
+// points at its payload and ngram_score/ngram_sum_raw score via g_ngram_lut[byte]
+// instead of the float array. NULL (default) => the historical float path is taken
+// verbatim, so every existing solve stays bit-identical. Written once on the main
+// thread before workers start (setup-phase static, shared, read-only during search).
+extern const unsigned char *g_ngram_u8;  // dense 8-bit table payload, or NULL
+extern float  g_ngram_lut[256];          // byte -> float weight (floor + byte*scale)
+extern size_t g_ngram_mmap_len;          // mmap length for cleanup (0 if malloc/none)
+
+// Weight of the n-gram at packed index `idx`, from whichever table is active: the
+// dequantizing LUT when a compressed 8-bit table is mmap'd (g_ngram_u8 != NULL), else
+// the float table `nd`. Lets the incremental-fast-path solvers (aristocrat / homophonic
+// / checkerboard / grandpre, which read the table directly) work with either
+// representation; the g_ngram_u8 == NULL branch returns nd[idx] unchanged, so the float
+// path stays numerically bit-identical. (ngram_score/ngram_sum_raw inline this select
+// themselves for the tight window walks.)
+static inline double ngram_weight_at(const float *nd, int idx) {
+    return g_ngram_u8 ? (double) g_ngram_lut[g_ngram_u8[idx]] : nd[idx];
+}
 extern bool g_score_no_sentinel;  // decoded cipher is all-letters (see utils.c); false = safe
 extern const CribDrag *g_cribdrag; // dragged cribs consulted by state_score; NULL = off
 extern float g_cribdrag_weight;    // crib-drag blend weight; 0 = off

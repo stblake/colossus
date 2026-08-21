@@ -12,6 +12,10 @@
 
 #include "colossus.h"
 #include "spaces.h"
+#include "scoring.h"        // NgramBinHeader / NGBIN_* for the compressed .ngbin reader
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 SpacesNgramTable *g_spaces_table = NULL;
 
@@ -22,7 +26,11 @@ SpacesNgramTable *g_spaces_table = NULL;
 #define SPACES_MAX_LINE 128
 
 struct SpacesNgramTable {
-    float *data;   // log10 P(window), size SPACES_ALPHA^order, indexed base-27 positional
+    float *data;                  // log10 P(window), size 27^order, base-27 positional (NULL if compressed)
+    const unsigned char *data8;   // dense 8-bit .ngbin payload (NULL if float); scored via lut[]
+    float lut[256];               // byte -> weight = w_floor + byte*w_scale (compressed only)
+    void  *map_base;              // mmap base for munmap (NULL if malloc/float)
+    size_t map_len;
     int order;
 };
 
@@ -39,10 +47,91 @@ static int sp_char_to_sym(char c) {
     return -1;
 }
 
+// Load a dense 8-bit .ngbin spaces table (same format as the letter tables -- see
+// scoring.c/write_ngram_bin -- but alphabet_size == SPACES_ALPHA (27) and base-27
+// indexing). mmaps the payload; sp_window_score dequantizes via tbl->lut. The -spaces
+// pass is a one-shot report Viterbi, not the hot solve loop, so the LUT indirection is
+// free. Returns NULL (printing an error) on any header/runtime mismatch.
+static SpacesNgramTable *load_spaces_ngrams_bin(const char *path, int order, bool verbose) {
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { printf("ERROR: could not open -spacesngramfile %s\n", path); return NULL; }
+
+    struct stat st;
+    if (fstat(fd, &st) != 0 || (size_t) st.st_size < (size_t) NGBIN_HEADER_SIZE) {
+        printf("ERROR: -spacesngramfile %s is too small to be a .ngbin table\n", path);
+        close(fd); return NULL;
+    }
+    size_t flen = (size_t) st.st_size;
+
+    NgramBinHeader h;
+    if (pread(fd, &h, sizeof h, 0) != (ssize_t) sizeof h) {
+        printf("ERROR: cannot read .ngbin header from -spacesngramfile %s\n", path);
+        close(fd); return NULL;
+    }
+
+    long long expect = sp_pow(SPACES_ALPHA, order);
+    if (memcmp(h.magic, NGBIN_MAGIC, NGBIN_MAGIC_LEN) != 0 || h.version != NGBIN_VERSION ||
+        h.mode != NGBIN_MODE_LOGPROB || h.order != order ||
+        h.alphabet_size != SPACES_ALPHA || (long long) h.n_entries != expect) {
+        printf("ERROR: -spacesngramfile %s is not an order-%d, %d-symbol spaces .ngbin "
+               "(check -spacesngramsize)\n", path, order, SPACES_ALPHA);
+        close(fd); return NULL;
+    }
+    if (flen < (size_t) NGBIN_HEADER_SIZE + h.n_entries) {
+        printf("ERROR: -spacesngramfile %s payload is truncated\n", path);
+        close(fd); return NULL;
+    }
+
+    void *base = mmap(NULL, flen, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    const unsigned char *payload;
+    void *map_base = NULL;
+    size_t map_len = 0;
+    if (base == MAP_FAILED) {
+        unsigned char *buf = malloc(flen);       // leaked at exit, like the float table
+        int fd2 = open(path, O_RDONLY);
+        if (!buf || fd2 < 0 || pread(fd2, buf, flen, 0) != (ssize_t) flen) {
+            printf("ERROR: cannot read .ngbin payload from -spacesngramfile %s\n", path);
+            return NULL;
+        }
+        close(fd2);
+        payload = buf + NGBIN_HEADER_SIZE;
+    } else {
+        payload = (const unsigned char *) base + NGBIN_HEADER_SIZE;
+        map_base = base;
+        map_len = flen;
+    }
+
+    SpacesNgramTable *tbl = malloc(sizeof(SpacesNgramTable));
+    tbl->data = NULL;
+    tbl->data8 = payload;
+    tbl->map_base = map_base;
+    tbl->map_len = map_len;
+    tbl->order = order;
+    for (int b = 0; b < 256; b++) tbl->lut[b] = (float) (h.w_floor + (double) b * h.w_scale);
+
+    if (verbose)
+        printf("Loaded compressed -spacesngramfile %s: order %d, %lld entries (%.1f MB, %s).\n",
+               path, order, (long long) h.n_entries, h.n_entries / 1048576.0,
+               (base == MAP_FAILED) ? "read" : "mmap");
+    return tbl;
+}
+
 SpacesNgramTable *load_spaces_ngrams(const char *filename, int order, bool verbose) {
     if (order < 1 || order > SPACES_MAX_ORDER) {
         printf("ERROR: -spacesngramsize %d out of range (1..%d)\n", order, SPACES_MAX_ORDER);
         return NULL;
+    }
+    // A dense 8-bit .ngbin (magic "COLNGBIN") is mmap'd; anything else is the text table.
+    {
+        FILE *pf = fopen(filename, "rb");
+        if (pf) {
+            char magic[NGBIN_MAGIC_LEN];
+            size_t got = fread(magic, 1, NGBIN_MAGIC_LEN, pf);
+            fclose(pf);
+            if (got == (size_t) NGBIN_MAGIC_LEN && memcmp(magic, NGBIN_MAGIC, NGBIN_MAGIC_LEN) == 0)
+                return load_spaces_ngrams_bin(filename, order, verbose);
+        }
     }
     long long n_entries = sp_pow(SPACES_ALPHA, order);
     if (n_entries > (long long) 600000000) {   // ~2.4GB of float -- order 7+ rejected
@@ -93,6 +182,9 @@ SpacesNgramTable *load_spaces_ngrams(const char *filename, int order, bool verbo
 
     SpacesNgramTable *tbl = malloc(sizeof(SpacesNgramTable));
     tbl->order = order;
+    tbl->data8 = NULL;             // float path: the compressed fields stay inert
+    tbl->map_base = NULL;
+    tbl->map_len = 0;
     tbl->data = malloc((size_t) n_entries * sizeof(float));
     // Unseen windows must be penalised, not left at 0: most candidate segmentations probe
     // windows the corpus never saw, and a flat 0 gives the Viterbi decode no way to prefer a
@@ -111,7 +203,8 @@ SpacesNgramTable *load_spaces_ngrams(const char *filename, int order, bool verbo
 
 void free_spaces_ngrams(SpacesNgramTable *tbl) {
     if (!tbl) return;
-    free(tbl->data);
+    if (tbl->map_base) munmap(tbl->map_base, tbl->map_len);
+    else free(tbl->data);
     free(tbl);
 }
 
@@ -149,7 +242,7 @@ static double sp_window_score(const SpacesNgramTable *tbl, const int ctx[], int 
     long long idx = 0;
     for (int k = 0; k < need; k++) idx = idx * SPACES_ALPHA + ctx[k];
     idx = idx * SPACES_ALPHA + sym;
-    return (double) tbl->data[idx];
+    return tbl->data8 ? (double) tbl->lut[tbl->data8[idx]] : (double) tbl->data[idx];
 }
 
 // Exact Viterbi segmentation of a single pure-letter run (run_len >= 0 alphabet-index

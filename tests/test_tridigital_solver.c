@@ -25,7 +25,7 @@ static int failures = 0, checks = 0;
 #define CHECK(cond, ...) do { checks++; if (!(cond)) { \
     failures++; printf("FAIL: "); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
-#define NGRAM_FILE (char *) "english_quintgrams.txt"
+#define NGRAM_FILE (char *) "ngram_data/english/english_quintgrams.txt"
 #define NGRAM_SIZE 5
 #define DICT_FILE  (char *) "OxfordEnglishWords.txt"
 

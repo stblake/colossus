@@ -249,6 +249,8 @@
 #include "condi_solver.h"
 #include "fracmorse_solver.h"
 #include "double_transposition_solver.h"
+#include "layered_solver.h"
+#include "hill_quag_solver.h"
 #include "pollux_solver.h"
 #include "morbit_solver.h"
 #include "straddling_checkerboard_solver.h"
@@ -260,6 +262,8 @@
 #include "syllabary_solver.h"
 #include "ragbaby_solver.h"
 #include "aristocrat_solver.h"
+#include "keyphrase_solver.h"
+#include "affine_solver.h"
 #include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -307,6 +311,7 @@ void init_config(ColossusConfig *cfg) {
     cfg->plaintext_keyword_len_present = false;
     cfg->ciphertext_keyword_len_present = false;
     cfg->cycleword_len_present = false;
+    cfg->n_cycleword_lens = 0;
     cfg->user_plaintext_keyword_present = false;
     cfg->user_ciphertext_keyword_present = false;
 
@@ -609,7 +614,9 @@ static void print_help(const char *prog) {
 "                          -multiline). Mutually exclusive with -batch.\n"
 "  -batch <file>           Solve every ciphertext line in the file in turn.\n"
 "  -ngramsize <n>          N-gram order for scoring (typically 4, or 5 with -logprob).\n"
-"  -ngramfile <file>       N-gram frequency table (e.g. english_quadgrams.txt).\n"
+"  -ngramfile <file>       N-gram frequency table (e.g. ngram_data/english/english_quadgrams.txt).\n"
+"                          A dense 8-bit .ngbin table (see -writengrambin) is auto-\n"
+"                          detected by its magic and mmap'd (implies -logprob).\n"
 "\n"
 "READABILITY (-spaces)\n"
 "  -spaces                 After the best plaintext for each report is found, run an\n"
@@ -651,6 +658,10 @@ static void print_help(const char *prog) {
 "                          and square ciphers). Alias -azdecrypt.              [off]\n"
 "  -reversengrams          Reversal-invariant table (each n-gram and its reverse\n"
 "                          share the max weight). Alias -revngrams.            [off]\n"
+"  -writengrambin <file>   Tool mode: load -ngramfile with this -type's alphabet,\n"
+"                          -ngramsize and -logprob, quantize it to a dense 8-bit\n"
+"                          .ngbin at <file>, and exit (no cipher needed). The table\n"
+"                          is alphabet-specific -- pass the same -type you will solve.\n"
 "  -weightngram <f>        N-gram score weight.                              [12.0]\n"
 "  -weightcrib <f>         Crib-match score weight.                          [36.0]\n"
 "  -weightcribdrag <f>     Crib-dragging reward weight (-cribdrag).          [36.0]\n"
@@ -735,10 +746,10 @@ static void print_help(const char *prog) {
     printf(
 "\n"
 "EXAMPLES\n"
-"  colossus -type q3 -cipher cipher.txt -ngramsize 4 -ngramfile english_quadgrams.txt\n"
-"  colossus -type playfair -cipher pf.txt -ngramsize 5 -ngramfile english_quintgrams.txt -logprob\n"
-"  colossus -type transcol -cipher ct.txt -ngramsize 4 -ngramfile english_quadgrams.txt -mincols 2 -maxcols 15\n"
-"  colossus -type all -cipher ct.txt -ngramsize 4 -ngramfile english_quadgrams.txt\n"
+"  colossus -type q3 -cipher cipher.txt -ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt\n"
+"  colossus -type playfair -cipher pf.txt -ngramsize 5 -ngramfile ngram_data/english/english_quintgrams.txt -logprob\n"
+"  colossus -type transcol -cipher ct.txt -ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt -mincols 2 -maxcols 15\n"
+"  colossus -type all -cipher ct.txt -ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt\n"
 "\n"
 "See README.md and CLAUDE.md for the full writeup and per-type notes.\n"
 "\n");
@@ -750,6 +761,8 @@ int main(int argc, char **argv) {
     int i;
     char single_ciphertext_buffer[MAX_CIPHER_LENGTH];
     char cribtext[MAX_CIPHER_LENGTH];
+    char writebin_path[MAX_FILENAME_LEN] = "";  // -writengrambin: dump the loaded table then exit
+    bool do_writebin = false;
 
     printf("\n\nCOLOSSUS Cipher Solver\n\n");
     printf("Written by Sam Blake, started 14 July 2023.\n\n");
@@ -844,6 +857,14 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-ngramfile") == 0) {
             strcpy(cfg.ngram_file, argv[++i]);
             printf("-ngramfile %s\n", cfg.ngram_file);
+        } else if (strcmp(argv[i], "-writengrambin") == 0) {
+            // Tool mode: after the requested -ngramfile is loaded (with the -type's
+            // alphabet, -ngramsize and -logprob applied exactly as a real solve would),
+            // quantize it to a dense 8-bit .ngbin at this path and exit. No cipher needed.
+            strncpy(writebin_path, argv[++i], MAX_FILENAME_LEN - 1);
+            writebin_path[MAX_FILENAME_LEN - 1] = '\0';
+            do_writebin = true;
+            printf("-writengrambin %s\n", writebin_path);
         } else if (strcmp(argv[i], "-spaces") == 0) {
             cfg.spaces_present = true;
             printf("-spaces\n");
@@ -917,6 +938,23 @@ int main(int argc, char **argv) {
             cfg.cycleword_len = atoi(argv[++i]);
             cfg.max_cycleword_len = max(cfg.max_cycleword_len, 1 + cfg.cycleword_len);
             printf("-cyclewordlen %d\n", cfg.cycleword_len);
+        } else if (strcmp(argv[i], "-cyclewordlens") == 0) {
+            // Comma-separated component periods of a composed multi-Quagmire (QUAG_TRANS),
+            // e.g. -cyclewordlens 5,9 for Q(5)Q(9). Effective period = their lcm.
+            char *spec = argv[++i], *tok = strtok(spec, ",");
+            int eff = 1; cfg.n_cycleword_lens = 0;
+            while (tok && cfg.n_cycleword_lens < 8) {
+                int L = atoi(tok);
+                if (L > 0) {
+                    cfg.cycleword_lens[cfg.n_cycleword_lens++] = L;
+                    eff = eff / gcd(eff, L) * L;      // lcm
+                }
+                tok = strtok(NULL, ",");
+            }
+            cfg.cycleword_len = eff;
+            cfg.cycleword_len_present = true;
+            cfg.max_cycleword_len = max(cfg.max_cycleword_len, 1 + eff);
+            printf("-cyclewordlens (%d components, effective period %d)\n", cfg.n_cycleword_lens, eff);
         } else if (strcmp(argv[i], "-nsigmathreshold") == 0) {
             cfg.n_sigma_threshold = atof(argv[++i]);
             printf("-nsigmathreshold %.4f\n", cfg.n_sigma_threshold);
@@ -1372,6 +1410,14 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Grandpre cipher (N x N word square; each plaintext letter -> a 2-digit (row,col) code of any cell holding it; homophonic over numeric codes).\n\n");
     } else if (cfg.cipher_type == SYLLABARY) {
         printf("\nAttacking a Syllabary cipher (10x10 square of 100 fixed syllabary tokens; each plaintext element -> a 2-digit (row,col) code; substitution over 100 codes -> known 1-3 letter tokens).\n\n");
+    } else if (cfg.cipher_type == KEY_PHRASE) {
+        printf("\nAttacking a Key Phrase cipher (a 26-letter phrase IS the cipher alphabet; several plaintext letters share a ciphertext letter, so decode is ambiguous and context-resolved).\n\n");
+    } else if (cfg.cipher_type == AFFINE) {
+        printf("\nAttacking an Affine cipher (monoalphabetic C = a*P + b mod 26, gcd(a,26)=1; deterministic-exhaustive 312-key search).\n\n");
+    } else if (cfg.cipher_type == QUAG_TRANS) {
+        printf("\nAttacking a layered Quagmire III o columnar transposition (Paradigm): strip the outer Quagmire by monogram, solve the inner transposition by n-gram, refine the cycleword through it.\n\n");
+    } else if (cfg.cipher_type == HILL_QUAG) {
+        printf("\nAttacking a layered Hill o Quagmire III (Paradigm): recover the Hill matrix by the inner Quagmire's period-P columnar statistic (key-independent), then strip the Hill and solve the Quagmire.\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1388,7 +1434,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    if (!cfg.cipher_present && !cfg.batch_present) {
+    if (!cfg.cipher_present && !cfg.batch_present && !do_writebin) {
         printf("\n\nERROR: No cipher input specified. Use -cipher or -batch.\n\n");
         return 0;
     }
@@ -1552,6 +1598,14 @@ int main(int argc, char **argv) {
     // --- Resource Loading ---
 
     shared.ngram_data = load_ngrams(cfg.ngram_file, cfg.ngram_size, cfg.verbose);
+
+    // -writengrambin tool mode: dump the just-loaded table as a dense 8-bit .ngbin and
+    // exit before touching the ciphertext. It runs with the exact per-type alphabet,
+    // -ngramsize and -logprob table a real solve would build, so the compressed table is
+    // correct for that cipher type (a Bifid table is 25-letter J->I, a Vigenere table 26,
+    // etc.). write_ngram_bin refuses a non-logprob or already-compressed input table.
+    if (do_writebin)
+        return write_ngram_bin(writebin_path, shared.ngram_data, cfg.ngram_size);
 
     // -spaces: load the space-inclusive n-gram table once, up front (not per candidate), so
     // every solver's final report can call print_spaces_line() for free. g_spaces_table stays
@@ -1819,6 +1873,20 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
         return ;
     }
+    // --- LAYERED (Paradigm) CIPHERS ---
+    // Outer substitution stage over an inner transposition/substitution stage;
+    // solved by peeling the outer stage via a key-independent statistic, then
+    // the inner stage by n-gram (see layered_solver.c / hill_quag_solver.c).
+    if (cfg->cipher_type == QUAG_TRANS) {
+        solve_quag_trans(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
+        return ;
+    }
+    if (cfg->cipher_type == HILL_QUAG) {
+        solve_hill_quag(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
+        return ;
+    }
     if (cfg->cipher_type == POLLUX) {
         solve_pollux(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
@@ -1884,6 +1952,20 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         // Simple monoalphabetic substitution; word divisions carried through cipher_indices as
         // sentinels (Aristocrat reconstructs them; Patristocrat regroups in 5s).
         solve_aristocrat(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == KEY_PHRASE) {
+        // 26-letter phrase as the cipher alphabet -> ambiguous many-to-one decode. Searches a
+        // partition of a..z among the observed ct letters with an inner beam-Viterbi decode;
+        // word divisions carried through cipher_indices as sentinels (restored in the report).
+        solve_keyphrase(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == AFFINE) {
+        // Monoalphabetic C = a*P + b mod 26; deterministic-exhaustive 12x26 = 312-key search.
+        solve_affine(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

@@ -306,6 +306,22 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "syllabary") || str_eq(arg, "syll") || str_eq(arg, "sy"))
         return SYLLABARY;
 
+    // Key Phrase (a 26-letter phrase IS the cipher alphabet; ambiguous many-to-one decode).
+    if (str_eq(arg, "keyphrase") || str_eq(arg, "key-phrase") || str_eq(arg, "kp"))
+        return KEY_PHRASE;
+
+    // Affine (monoalphabetic C = a*P + b mod 26; 312-key exhaustive).
+    if (str_eq(arg, "affine") || str_eq(arg, "af"))
+        return AFFINE;
+
+    // Layered (Paradigm): outer Quagmire III o inner columnar transposition.
+    if (str_eq(arg, "quagtrans") || str_eq(arg, "qtrans") || str_eq(arg, "quag-trans"))
+        return QUAG_TRANS;
+
+    // Layered (Paradigm): outer Hill o inner Quagmire III.
+    if (str_eq(arg, "hillquag") || str_eq(arg, "hill-quag") || str_eq(arg, "hq"))
+        return HILL_QUAG;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -402,6 +418,10 @@ const char *cipher_type_name(int type) {
         case SEQUENCE_TRANSPOSITION:  return "Sequence Transposition";
         case GRANDPRE:                return "Grandpre";
         case SYLLABARY:               return "Syllabary";
+        case KEY_PHRASE:              return "Key Phrase";
+        case AFFINE:                  return "Affine";
+        case QUAG_TRANS:              return "Quagmire III o columnar transposition (layered)";
+        case HILL_QUAG:               return "Hill o Quagmire III (layered)";
         default:                      return NULL;
     }
 }
@@ -500,6 +520,10 @@ const char *cipher_type_aliases(int type) {
         case SEQUENCE_TRANSPOSITION:  return "sequence-transposition, seqtrans, st";
         case GRANDPRE:                return "grandpre, gp";
         case SYLLABARY:               return "syllabary, syll, sy";
+        case KEY_PHRASE:              return "keyphrase, key-phrase, kp";
+        case AFFINE:                  return "affine, af";
+        case QUAG_TRANS:              return "quagtrans, qtrans, quag-trans";
+        case HILL_QUAG:               return "hillquag, hill-quag, hq";
         default:                      return NULL;
     }
 }

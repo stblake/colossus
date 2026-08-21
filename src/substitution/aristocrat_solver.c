@@ -129,7 +129,7 @@ static void aristocrat_sync_caches(const SolverCtx *ctx, const SolverConfig *cc,
     int n_windows = len - ng + 1;
     #define dec_at(q) (dec[q])
     for (int w = 0; w < n_windows; w++)
-        a->ngsum += ctx->ngram_data[ARIST_WINDOW_INDEX(w, ng, dec_at)];
+        a->ngsum += ngram_weight_at(ctx->ngram_data, ARIST_WINDOW_INDEX(w, ng, dec_at));
     #undef dec_at
 }
 
@@ -171,7 +171,7 @@ static double aristocrat_score_neighbor(const SolverCtx *ctx, const SolverConfig
             int w = a->win_list[i];
             int old_idx = ARIST_WINDOW_INDEX(w, ng, dec_at);
             int new_idx = ARIST_WINDOW_INDEX(w, ng, loc_at);
-            dsum += ctx->ngram_data[new_idx] - ctx->ngram_data[old_idx];
+            dsum += ngram_weight_at(ctx->ngram_data, new_idx) - ngram_weight_at(ctx->ngram_data, old_idx);
             a->win_mark[w] = 0;            // clear for next call
         }
         #undef loc_at

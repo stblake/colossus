@@ -28,7 +28,7 @@
 //  for COL_READ_TB). Both stages use cfg->read_direction.
 
 // Build a 26x26 English bigram log10-probability table by marginalizing an
-// n-gram COUNT file (e.g. english_quadgrams.txt): every internal bigram of each
+// n-gram COUNT file (e.g. ngram_data/english/english_quadgrams.txt): every internal bigram of each
 // listed n-gram contributes its count, the result is normalized to log10
 // probabilities and unseen bigrams get a rare-but-not-impossible floor. Returns a
 // malloc'd double[26*26] (index a*26 + b for the ordered pair (a,b)), or NULL on

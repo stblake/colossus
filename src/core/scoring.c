@@ -1,4 +1,8 @@
 #include "scoring.h"
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <limits.h>
 
 // Crib-dragging scoring globals (see -cribdrag). Default off => state_score is
 // bit-identical to the pre-feature behaviour. Set from main() once the words are
@@ -146,6 +150,32 @@ static inline double ngram_walk(const int * restrict src, int m,
     return score;
 }
 
+// Byte-table twin of ngram_walk (see the -reversengrams/.ngbin path): the packed
+// index is computed IDENTICALLY (same big-endian roll), but the per-window gather
+// dereferences the dense 8-bit table `nd8` and dequantizes through the 256-entry
+// `lut` (lut[b] == w_floor + b*w_scale). Same specialization scheme as ngram_walk so
+// the base multiplies strength-reduce for the hot (alpha, size) pairs. Only reached
+// when g_ngram_u8 != NULL, so the float path above stays bit-for-bit unchanged.
+static inline double ngram_walk_u8(const int * restrict src, int m,
+                                   const unsigned char * restrict nd8,
+                                   const float * restrict lut,
+                                   int ngram_size, int alpha, int top) {
+    double score = 0.;
+    int n_windows = m - ngram_size + 1;
+    if (n_windows > 0) {
+        int index = 0;
+        for (int j = 0; j < ngram_size; j++)
+            index = index * alpha + src[j];
+        score += lut[nd8[index]];
+
+        for (int i = 1; i < n_windows; i++) {
+            index = (index - src[i - 1] * top) * alpha + src[i + ngram_size - 1];
+            score += lut[nd8[index]];
+        }
+    }
+    return score;
+}
+
 double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram_size) {
     double score = 0.;
 
@@ -224,15 +254,38 @@ double ngram_score(int decrypted[], int cipher_len, float *ngram_data, int ngram
     // 27/36 pairs whose float table exceeds the shadow threshold take the shadow path instead
     // -- these float specialisations then serve the small-table (27^4) case and the
     // shadow-disabled fallback.
-    const float * restrict nd = ngram_data;
-    if      (g_alpha == 25 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 25,  15625);
-    else if (g_alpha == 26 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 26,  17576);
-    else if (g_alpha == 25 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 25, 390625);
-    else if (g_alpha == 26 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 26, 456976);
-    else if (g_alpha == 27 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 27,  19683);
-    else if (g_alpha == 27 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 27, 531441);
-    else if (g_alpha == 36 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 36,  46656);
-    else                                       score = ngram_walk(src, m, nd, ngram_size, g_alpha, top);
+    // Compressed 8-bit table (see load_ngrams/.ngbin): score through g_ngram_lut with
+    // the SAME (alpha, size) specialization scheme as the float path. The branch is
+    // hoisted out of the per-window loop (checked once per ngram_score call, and always
+    // NULL/perfectly-predicted for existing solves), so the else branch runs the float
+    // dispatch with byte-for-byte the historical arithmetic -- every existing solve is
+    // numerically unchanged and the regression suite stays bit-identical. The dense byte
+    // table is practical through order 6 (309 MB at alpha=26), so 26/6 & 25/6 are
+    // specialized here even though the float path (which never holds a 6-gram table by
+    // policy) does not.
+    if (g_ngram_u8) {
+        const unsigned char * restrict nd8 = g_ngram_u8;
+        const float * restrict lut = g_ngram_lut;
+        if      (g_alpha == 25 && ngram_size == 4) score = ngram_walk_u8(src, m, nd8, lut, 4, 25,     15625);
+        else if (g_alpha == 26 && ngram_size == 4) score = ngram_walk_u8(src, m, nd8, lut, 4, 26,     17576);
+        else if (g_alpha == 25 && ngram_size == 5) score = ngram_walk_u8(src, m, nd8, lut, 5, 25,    390625);
+        else if (g_alpha == 26 && ngram_size == 5) score = ngram_walk_u8(src, m, nd8, lut, 5, 26,    456976);
+        else if (g_alpha == 25 && ngram_size == 6) score = ngram_walk_u8(src, m, nd8, lut, 6, 25,   9765625);
+        else if (g_alpha == 26 && ngram_size == 6) score = ngram_walk_u8(src, m, nd8, lut, 6, 26,  11881376);
+        else if (g_alpha == 27 && ngram_size == 4) score = ngram_walk_u8(src, m, nd8, lut, 4, 27,     19683);
+        else if (g_alpha == 27 && ngram_size == 5) score = ngram_walk_u8(src, m, nd8, lut, 5, 27,    531441);
+        else                                       score = ngram_walk_u8(src, m, nd8, lut, ngram_size, g_alpha, top);
+    } else {
+        const float * restrict nd = ngram_data;
+        if      (g_alpha == 25 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 25,  15625);
+        else if (g_alpha == 26 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 26,  17576);
+        else if (g_alpha == 25 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 25, 390625);
+        else if (g_alpha == 26 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 26, 456976);
+        else if (g_alpha == 27 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 27,  19683);
+        else if (g_alpha == 27 && ngram_size == 5) score = ngram_walk(src, m, nd, 5, 27, 531441);
+        else if (g_alpha == 36 && ngram_size == 4) score = ngram_walk(src, m, nd, 4, 36,  46656);
+        else                                       score = ngram_walk(src, m, nd, ngram_size, g_alpha, top);
+    }
 
     int denom = m - ngram_size;
     score = (denom > 0) ? scale*score/denom : 0.0;
@@ -247,6 +300,12 @@ double ngram_sum_raw(const int *text, int len, const float *ngram_data, int ngra
     int top = 1;                          // g_alpha^(ngram_size-1)
     for (int j = 0; j < ngram_size - 1; j++) top *= g_alpha;
 
+    // When a compressed 8-bit table is active, gather through the dequantizing LUT
+    // (the float pointer is then NULL, load_ngrams having returned NULL for a .ngbin).
+    // This is off the hot solve path (seam decomposition only), so a per-gather select
+    // is fine; nd8 == NULL leaves the original float gather byte-for-byte unchanged.
+    const unsigned char *nd8 = g_ngram_u8;
+
     // Big-endian packing, same convention (and same table) as ngram_score: the roll
     // is a multiply, and the outgoing letter sits at the top digit (weight `top`). A
     // sentinel contributed 0 to the index, so subtracting out_v*top (out_v forced to
@@ -257,7 +316,7 @@ double ngram_sum_raw(const int *text, int len, const float *ngram_data, int ngra
         if (v < 0) { bad++; v = 0; }       // sentinel: contributes 0 to the packed index
         index = index * g_alpha + v;
     }
-    if (bad == 0) score += ngram_data[index];
+    if (bad == 0) score += nd8 ? (double) g_ngram_lut[nd8[index]] : ngram_data[index];
 
     for (int i = 1; i < n_windows; i++) {
         int out_v = text[i - 1];
@@ -266,7 +325,7 @@ double ngram_sum_raw(const int *text, int len, const float *ngram_data, int ngra
         int in_iv = in_v;
         if (in_v < 0) { bad++; in_iv = 0; }
         index = (index - out_v * top) * g_alpha + in_iv;
-        if (bad == 0) score += ngram_data[index];
+        if (bad == 0) score += nd8 ? (double) g_ngram_lut[nd8[index]] : ngram_data[index];
     }
     return score;
 }
@@ -368,11 +427,118 @@ int rand_int_frequency_weighted(int state[], int min_index, int max_index) {
     return max_index - 1;
 }
 
+// Load a dense 8-bit .ngbin table (see write_ngram_bin / scoring.h). mmaps the payload
+// into g_ngram_u8, fills the byte->weight LUT, and forces log-prob semantics. Returns
+// NULL -- the caller stores it as the (now unused) float table and ngram_score /
+// ngram_sum_raw read g_ngram_u8 instead. Hard-errors on any header/runtime mismatch.
+static float* load_ngrams_bin(const char *path, int ngram_size, bool verbose) {
+    if (g_ngram_reverse) {
+        fprintf(stderr, "Error: -reversengrams is not supported with a compressed .ngbin table "
+                        "(read-only mmap).\n       Use the text table or pre-bake a reversed .ngbin.\n");
+        exit(1);
+    }
+
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) { fprintf(stderr, "Error: cannot open ngram file '%s'\n", path); exit(1); }
+
+    struct stat st;
+    if (fstat(fd, &st) != 0 || (size_t) st.st_size < (size_t) NGBIN_HEADER_SIZE) {
+        fprintf(stderr, "Error: '%s' is too small to be a .ngbin table\n", path);
+        exit(1);
+    }
+    size_t flen = (size_t) st.st_size;
+
+    NgramBinHeader h;
+    if (pread(fd, &h, sizeof h, 0) != (ssize_t) sizeof h) {
+        fprintf(stderr, "Error: cannot read .ngbin header from '%s'\n", path);
+        exit(1);
+    }
+
+    uint64_t expect = 1;
+    for (int i = 0; i < ngram_size; i++) expect *= (uint64_t) g_alpha;
+
+    if (memcmp(h.magic, NGBIN_MAGIC, NGBIN_MAGIC_LEN) != 0 || h.version != NGBIN_VERSION) {
+        fprintf(stderr, "Error: '%s' is not a v%d .ngbin table\n", path, NGBIN_VERSION);
+        exit(1);
+    }
+    if (h.mode != NGBIN_MODE_LOGPROB) {
+        fprintf(stderr, "Error: .ngbin '%s' has unsupported weighting mode %u\n", path, h.mode);
+        exit(1);
+    }
+    if (h.order != ngram_size) {
+        fprintf(stderr, "Error: .ngbin '%s' is order %u but -ngramsize is %d\n",
+                path, h.order, ngram_size);
+        exit(1);
+    }
+    if (h.alphabet_size != g_alpha) {
+        fprintf(stderr, "Error: .ngbin '%s' was built for a %u-letter alphabet but the runtime "
+                        "alphabet is %d.\n       A compressed table is alphabet-specific -- rebuild it "
+                        "for this cipher type (see -writengrambin).\n", path, h.alphabet_size, g_alpha);
+        exit(1);
+    }
+    if (h.n_entries != expect || expect > (uint64_t) INT_MAX) {
+        fprintf(stderr, "Error: .ngbin '%s' entry count %llu != expected %llu (or exceeds the int "
+                        "index range)\n", path, (unsigned long long) h.n_entries,
+                (unsigned long long) expect);
+        exit(1);
+    }
+    if (flen < (size_t) NGBIN_HEADER_SIZE + h.n_entries) {
+        fprintf(stderr, "Error: .ngbin '%s' payload is truncated\n", path);
+        exit(1);
+    }
+
+    // mmap the whole file; the payload begins right after the 64-byte header.
+    void *base = mmap(NULL, flen, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+    const unsigned char *payload;
+    if (base == MAP_FAILED) {
+        // Fall back to a plain read (still 1 byte/entry). Leaked at exit, like the
+        // never-freed float table -- the process is short-lived.
+        unsigned char *buf = malloc(flen);
+        int fd2 = open(path, O_RDONLY);
+        if (!buf || fd2 < 0 || pread(fd2, buf, flen, 0) != (ssize_t) flen) {
+            fprintf(stderr, "Error: cannot read .ngbin payload from '%s'\n", path);
+            exit(1);
+        }
+        close(fd2);
+        payload = buf + NGBIN_HEADER_SIZE;
+        g_ngram_mmap_len = 0;
+    } else {
+        payload = (const unsigned char *) base + NGBIN_HEADER_SIZE;
+        g_ngram_mmap_len = flen;
+    }
+
+    for (int b = 0; b < 256; b++)
+        g_ngram_lut[b] = (float) (h.w_floor + (double) b * h.w_scale);
+    g_ngram_u8 = payload;
+    g_ngram_floor = h.w_floor;      // entropy-term base (matches the float logprob path)
+    g_ngram_logprob = true;         // the format stores log10 probabilities
+
+    if (verbose)
+        printf("\nLoaded compressed ngrams: order %d, alphabet %d, %llu entries (%.1f MB, %s).\n\n",
+               ngram_size, g_alpha, (unsigned long long) h.n_entries,
+               h.n_entries / 1048576.0, (base == MAP_FAILED) ? "read" : "mmap");
+    return NULL;
+}
+
 float* load_ngrams(char *ngram_file, int ngram_size, bool verbose) {
     FILE *fp;
     int i, n_ngrams, freq, indx;
     char ngram[MAX_NGRAM_SIZE];
     float *ngram_data, total;
+
+    // A dense 8-bit .ngbin (magic "COLNGBIN") is mmap'd and scored via g_ngram_lut; any
+    // other file is the historical space-separated text table parsed below.
+    {
+        FILE *pf = fopen(ngram_file, "rb");
+        if (pf) {
+            char magic[NGBIN_MAGIC_LEN];
+            size_t got = fread(magic, 1, NGBIN_MAGIC_LEN, pf);
+            fclose(pf);
+            if (got == (size_t) NGBIN_MAGIC_LEN && memcmp(magic, NGBIN_MAGIC, NGBIN_MAGIC_LEN) == 0)
+                return load_ngrams_bin(ngram_file, ngram_size, verbose);
+        }
+    }
 
     if (verbose) printf("\nLoading ngrams...");
     n_ngrams = int_pow(g_alpha, ngram_size);
@@ -440,6 +606,73 @@ float* load_ngrams(char *ngram_file, int ngram_size, bool verbose) {
 
     if (verbose) printf("...finished.\n\n");
     return ngram_data;
+}
+
+int write_ngram_bin(const char *path, const float *ngram_data, int ngram_size) {
+    if (!ngram_data || g_ngram_u8) {
+        fprintf(stderr, "Error: -writengrambin needs a TEXT ngram table as input (the loaded "
+                        "table is already compressed).\n");
+        return 1;
+    }
+    if (!g_ngram_logprob) {
+        fprintf(stderr, "Error: -writengrambin requires -logprob (the .ngbin format stores "
+                        "log10 probabilities).\n");
+        return 1;
+    }
+    uint64_t n = 1;
+    for (int i = 0; i < ngram_size; i++) n *= (uint64_t) g_alpha;
+    if (n > (uint64_t) INT_MAX) {
+        fprintf(stderr, "Error: a %d-gram table over a %d-letter alphabet has %llu entries, too "
+                        "large for the dense .ngbin format (int index limit).\n",
+                ngram_size, g_alpha, (unsigned long long) n);
+        return 1;
+    }
+
+    // The in-memory log-prob table sets unseen cells to g_ngram_floor (the minimum), so
+    // quantize [floor, max] into 0..255: unseen -> 0, dequantizing back to floor exactly.
+    double w_floor = g_ngram_floor;
+    double w_max = ngram_data[0];
+    for (uint64_t i = 1; i < n; i++) if (ngram_data[i] > w_max) w_max = ngram_data[i];
+    if (w_max <= w_floor) w_max = w_floor + 1.0;          // degenerate guard (empty table)
+    double w_scale = (w_max - w_floor) / 255.0;
+
+    NgramBinHeader h;
+    memset(&h, 0, sizeof h);
+    memcpy(h.magic, NGBIN_MAGIC, NGBIN_MAGIC_LEN);
+    h.version = NGBIN_VERSION;
+    h.order = (uint8_t) ngram_size;
+    h.alphabet_size = (uint8_t) g_alpha;
+    h.mode = NGBIN_MODE_LOGPROB;
+    h.n_entries = n;
+    h.w_floor = w_floor;
+    h.w_scale = w_scale;
+    h.total_count = 0.01 * pow(10.0, -w_floor);          // reference: floor = log10(0.01/total)
+
+    FILE *fp = fopen(path, "wb");
+    if (!fp) { fprintf(stderr, "Error: cannot open '%s' for writing\n", path); return 1; }
+    if (fwrite(&h, 1, sizeof h, fp) != sizeof h) {
+        fprintf(stderr, "Error: .ngbin header write failed\n"); fclose(fp); return 1;
+    }
+
+    unsigned char *buf = malloc((size_t) n);
+    if (!buf) { fprintf(stderr, "Error: out of memory writing .ngbin\n"); fclose(fp); return 1; }
+    double inv = 1.0 / w_scale, max_abs_err = 0.0;
+    for (uint64_t i = 0; i < n; i++) {
+        long b = lround((ngram_data[i] - w_floor) * inv);
+        if (b < 0) b = 0; else if (b > 255) b = 255;
+        buf[i] = (unsigned char) b;
+        double err = fabs((w_floor + (double) b * w_scale) - ngram_data[i]);
+        if (err > max_abs_err) max_abs_err = err;
+    }
+    size_t wrote = fwrite(buf, 1, (size_t) n, fp);
+    free(buf);
+    fclose(fp);
+    if (wrote != (size_t) n) { fprintf(stderr, "Error: .ngbin payload write failed\n"); return 1; }
+
+    printf("Wrote %s: order %d, alphabet %d, %llu entries (%.2f MB), floor=%.4f scale=%.6g, "
+           "max quant err=%.4f.\n", path, ngram_size, g_alpha, (unsigned long long) n,
+           (NGBIN_HEADER_SIZE + n) / 1048576.0, w_floor, w_scale, max_abs_err);
+    return 0;
 }
 
 int ngram_index_str(char *ngram, int ngram_size) {

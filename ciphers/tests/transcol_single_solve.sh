@@ -9,7 +9,7 @@
 SRC="$(cd "$(dirname "$0")/../.." && pwd)"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 out=$("$SRC/colossus" -type transcol -cipher "$HERE/transcol_single_tb.txt" \
-  -ngramsize 4 -ngramfile "$SRC/english_quadgrams.txt" \
+  -ngramsize 4 -ngramfile "$SRC/ngram_data/english/english_quadgrams.txt" \
   -nrestarts 40 -nhillclimbs 8000 2>/dev/null)
 echo "$out" | grep -E 'Result Score|columnar,'
 pt=$(echo "$out" | grep -A3 '^Result Score' | sed -n '3p')

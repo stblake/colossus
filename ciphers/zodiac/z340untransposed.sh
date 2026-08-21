@@ -15,7 +15,7 @@
 # for a crib-free attack. Known cribs or 6-grams would be needed to reach 100%.
 ../../colossus -type homophonic -multiline \
     -cipher z340untransposed.txt \
-    -ngramsize 5 -ngramfile ../../english_quintgrams.txt -logprob \
+    -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt -logprob \
     -nrestarts 600 -nhillclimbs 50000 \
     -inittemp 0.015 -weightmono 1.4 \
     -backtrackprob 0.15 -verbose

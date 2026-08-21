@@ -43,6 +43,15 @@ bool g_ngram_reverse = false;
 // false => the safe compaction path, byte-for-byte the historical scorer.
 bool g_score_no_sentinel = false;
 
+// Compressed (.ngbin) n-gram table. NULL => the historical float-array path is used
+// verbatim (bit-identical). When load_ngrams reads a dense 8-bit .ngbin it mmaps the
+// payload here, fills g_ngram_lut with the byte->weight dequantization, and forces
+// g_ngram_logprob (the format stores log10 probabilities). Set once on the main
+// thread before the search threads start (like g_alpha), then read-only.
+const unsigned char *g_ngram_u8 = NULL;
+float  g_ngram_lut[256];
+size_t g_ngram_mmap_len = 0;
+
 // Build the index<->char maps and the reindexed monogram table. `excluded` is a
 // string of letters to drop from the standard A..Z ordering (NULL/"" => full A..Z).
 void init_alphabet(const char *excluded) {
