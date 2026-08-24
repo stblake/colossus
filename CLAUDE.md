@@ -275,11 +275,29 @@ Morse / checkerboard (digit-stream input parsed from `ciphertext_str`):
   word-length fit, cross-config winner by WHOLE-WORD coverage. Dense polyphonic ⇒ partial,
   high-variance recovery below the 99% floor at all practical lengths; needs quintgrams + dict.
 
+Biliteral (concealment in cover text):
+- `91` baconian/bacon/bac (ACA): each plaintext letter → a 5-symbol a/b group via the FIXED
+  24-letter table (I=J, U=V; the a=0/b=1 code is the integer 0..23, and the 8 patterns 24..31 are
+  IMPOSSIBLE ⇒ a strong biliteral-VALIDITY signal). The ciphertext is normal English COVER TEXT; a
+  hidden CLASSIFIER (a 26-letter a/b labelling) says which cover letter/word stands for a vs b. The
+  decode table is fixed, so the classifier is the ONLY unknown. Solver = CipherModel/SHAPE_ANNEAL
+  over that labelling: the canonical rules (A-M/N-Z, vowel/consonant × polarity) are single SWEEP
+  cells — so a canonical ACA Baconian decodes EXACTLY (~100%) — plus a free-label anneal per grouping
+  mode (`-baconmode letter|word|auto`, auto sweeps both; a flip re-parses every group holding that
+  letter, guided by the validity reward). Length-changing decode CYCLICALLY TILED to a capped fixed
+  length + validity reward folded into score_adjust (the Fractionated-Morse pattern). BLIND
+  non-canonical recovery at the ACA ≤25-letter maximum is a documented gaming limitation (n-gram is
+  weak there; characterized in the solver test, not in run_tests). -logprob (+ quintgrams).
+
 Substitution:
 - `28` indep · `29` homophonic · `77` ragbaby/rag · `79` aristocrat/arist · `80` patristocrat/patri
   (one solver core: free 26-perm climbed by n-gram with the homophonic incremental fast path;
   word divisions preserved for the Aristocrat's spaced report, dropped/5-grouped for the
   Patristocrat; -logprob).
+- `86` keyphrase/key-phrase/kp (ACA): a 26-letter key phrase IS the cipher alphabet matched to
+  straight a..z; the phrase repeats letters so decode is many-to-one (ambiguous) → a partition of
+  a..z among the observed ct letters + an inner beam-Viterbi. · `87` affine/af: monoalphabetic
+  CT = (a·PT + b) mod 26, gcd(a,26)=1; deterministic-exhaustive 12 multipliers × 26 shifts = 312 keys.
 
 ### Key global flags
 

@@ -327,6 +327,10 @@ int parse_cipher_type(const char *arg) {
         str_eq(arg, "running") || str_eq(arg, "rk"))
         return RUNNING_KEY;
 
+    // Baconian (biliteral 5-symbol substitution concealed in cover text).
+    if (str_eq(arg, "baconian") || str_eq(arg, "bacon") || str_eq(arg, "bac"))
+        return BACONIAN;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -428,6 +432,7 @@ const char *cipher_type_name(int type) {
         case QUAG_TRANS:              return "Quagmire III o columnar transposition (layered)";
         case HILL_QUAG:               return "Hill o Quagmire III (layered)";
         case RUNNING_KEY:             return "Running Key";
+        case BACONIAN:                return "Baconian";
         default:                      return NULL;
     }
 }
@@ -531,6 +536,7 @@ const char *cipher_type_aliases(int type) {
         case QUAG_TRANS:              return "quagtrans, qtrans, quag-trans";
         case HILL_QUAG:               return "hillquag, hill-quag, hq";
         case RUNNING_KEY:             return "running-key, runningkey, rk";
+        case BACONIAN:                return "baconian, bacon, bac";
         default:                      return NULL;
     }
 }

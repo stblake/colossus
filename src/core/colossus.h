@@ -119,9 +119,15 @@ typedef struct CribDrag {
 #define QUAG_TRANS         88  // Layered (Paradigm): outer Quagmire III (keyed alphabet) o inner columnar transposition, -depth {0,1,2}; strip Quag by monogram, solve transposition by n-gram, refine cycleword through it
 #define HILL_QUAG          89  // Layered (Paradigm): outer Hill(kxk) o inner Quagmire III; search the Hill matrix by the inner Quag's period-P columnar IoC (key-independent), then strip Hill and solve the Quagmire
 #define RUNNING_KEY        90  // Running Key (ACA): Vigenere-family with a running-TEXT key (key length == message length, no period). Self-keyed (plaintext's first half keys its second), independent-key, or known-key (-runningkeyfile); blind search scores BOTH streams as English (beam warm start + anneal over the key stream)
+#define BACONIAN           91  // Baconian (ACA): biliteral 5-symbol substitution (fixed 24-letter table, I=J/U=V) concealed in cover text; search the a/b CLASSIFIER over per-letter/per-word grouping (canonical sweeps + free anneal), decode via the fixed table, biliteral-validity reward
 
-#define N_CIPHER_TYPES     91   // number of real cipher-type codes (0..90 inclusive)
+#define N_CIPHER_TYPES     92   // number of real cipher-type codes (0..91 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
+
+// Baconian grouping mode (-baconmode / cfg.bacon_mode): which cover unit is one a/b symbol.
+#define BAC_MODE_AUTO      0    // sweep both per-letter and per-word (default)
+#define BAC_MODE_LETTER    1    // every cover letter is one a/b symbol
+#define BAC_MODE_WORD      2    // the first letter of each word is one a/b symbol
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 
@@ -501,6 +507,10 @@ typedef struct {
     bool runningkey_present;
     char runningkey_file[MAX_FILENAME_LEN];
     bool runningkey_independent;
+
+    // Baconian (BACONIAN): the concealment grouping mode (-baconmode). BAC_MODE_AUTO
+    // (default) sweeps both per-letter and per-word; BAC_MODE_LETTER / BAC_MODE_WORD pin one.
+    int bacon_mode;
 
 } ColossusConfig;
 

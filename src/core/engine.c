@@ -1144,6 +1144,19 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 120, .s_n_hill_climbs = 120000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Baconian: the searched key is the 26-letter a/b CLASSIFIER (a small binary labelling on
+    // short cover text). Canonical rules are single SWEEP cells (no climb); the ONE free-climb
+    // config per grouping mode flips one label per move over a needle-ish landscape (a flip re-
+    // parses every group holding that letter), guided by the biliteral-validity reward -- so
+    // MANY warm restarts with moderate climbs (the decodes are tiny, <=125 letters). The tiled
+    // decode + validity reward make it effectively need -logprob. Tuned against
+    // test_baconian_solver.
+    { .cipher_type = BACONIAN, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 24, .a_n_hill_climbs = 60000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 120, .s_n_hill_climbs = 60000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     // Straddling Checkerboard: the per-config SA MINI-SOLVE pre-pass (in the solver) does the
     // heavy lifting and warm-starts each kept indicator-pair config near the solution, so the
     // engine anneal is a short warm polish (a few restarts). inittemp 0.30 like the other

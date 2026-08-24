@@ -265,6 +265,7 @@
 #include "keyphrase_solver.h"
 #include "affine_solver.h"
 #include "running_key_solver.h"
+#include "baconian_solver.h"
 #include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -384,6 +385,7 @@ void init_config(ColossusConfig *cfg) {
     cfg->runningkey_present = false;    // Running Key: -runningkeyfile gives a KNOWN key text
     cfg->runningkey_file[0] = '\0';
     cfg->runningkey_independent = false; // -indepkey: general blind mode (else ACA self-keyed)
+    cfg->bacon_mode = BAC_MODE_AUTO;     // Baconian: sweep both per-letter and per-word (-baconmode)
 }
 
 
@@ -896,6 +898,14 @@ int main(int argc, char **argv) {
             // ACA default where the plaintext's first half is its own running key.
             cfg.runningkey_independent = true;
             printf("-indepkey\n");
+        } else if (strcmp(argv[i], "-baconmode") == 0) {
+            // Baconian: which cover unit is one a/b symbol -- letter | word | auto (default).
+            const char *m = argv[++i];
+            if (strcmp(m, "letter") == 0)      cfg.bacon_mode = BAC_MODE_LETTER;
+            else if (strcmp(m, "word") == 0)   cfg.bacon_mode = BAC_MODE_WORD;
+            else if (strcmp(m, "auto") == 0)   cfg.bacon_mode = BAC_MODE_AUTO;
+            else { printf("ERROR: -baconmode must be letter, word, or auto (got \"%s\")\n", m); return 0; }
+            printf("-baconmode %s\n", m);
         } else if (strcmp(argv[i], "-excludeletter") == 0) {
             // Drop one (or more) letters from the alphabet, shrinking it to an
             // N<26 letter alphabet with mod-N arithmetic. E.g. -excludeletter P
@@ -1437,6 +1447,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a layered Hill o Quagmire III (Paradigm): recover the Hill matrix by the inner Quagmire's period-P columnar statistic (key-independent), then strip the Hill and solve the Quagmire.\n\n");
     } else if (cfg.cipher_type == RUNNING_KEY) {
         printf("\nAttacking a Running Key cipher (Vigenere-family with a running-TEXT key; self-keyed / independent blind scores both streams as English, or known-key with -runningkeyfile).\n\n");
+    } else if (cfg.cipher_type == BACONIAN) {
+        printf("\nAttacking a Baconian cipher (biliteral 5-symbol substitution concealed in cover text; search the a/b classifier over per-letter/per-word grouping, decode via the fixed 24-letter table).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -2185,6 +2197,15 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         // blind search scores BOTH streams as English (beam warm start + anneal over the key
         // stream); -runningkeyfile does a known-key deterministic decrypt. Families swept.
         solve_running_key(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == BACONIAN) {
+        // Biliteral 5-symbol substitution concealed in cover text (space-significant:
+        // per-word grouping needs word boundaries, so solve_baconian re-parses
+        // ciphertext_str). Searches the a/b classifier; decode via the fixed 24-letter table.
+        solve_baconian(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
