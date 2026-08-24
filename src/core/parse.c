@@ -322,6 +322,11 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "hillquag") || str_eq(arg, "hill-quag") || str_eq(arg, "hq"))
         return HILL_QUAG;
 
+    // Running Key (Vigenere-family with a running-TEXT key; no period).
+    if (str_eq(arg, "running-key") || str_eq(arg, "runningkey") ||
+        str_eq(arg, "running") || str_eq(arg, "rk"))
+        return RUNNING_KEY;
+
     // Return -1 to indicate invalid/unknown type.
     return -1;
 }
@@ -422,6 +427,7 @@ const char *cipher_type_name(int type) {
         case AFFINE:                  return "Affine";
         case QUAG_TRANS:              return "Quagmire III o columnar transposition (layered)";
         case HILL_QUAG:               return "Hill o Quagmire III (layered)";
+        case RUNNING_KEY:             return "Running Key";
         default:                      return NULL;
     }
 }
@@ -524,6 +530,7 @@ const char *cipher_type_aliases(int type) {
         case AFFINE:                  return "affine, af";
         case QUAG_TRANS:              return "quagtrans, qtrans, quag-trans";
         case HILL_QUAG:               return "hillquag, hill-quag, hq";
+        case RUNNING_KEY:             return "running-key, runningkey, rk";
         default:                      return NULL;
     }
 }

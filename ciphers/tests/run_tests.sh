@@ -217,6 +217,11 @@ fast | grille_aca          | grille        | grille_aca.txt          | -nrestart
 # only the 10-bucket read order is searched. Needs -logprob (the interleaving gams reward-only).
 # See tests/test_sequence_transposition*.c.
 fast | sequence_transposition_pp | st       | sequence_transposition_pp.txt | -logprob -primer 31415 -nrestarts 40 -nhillclimbs 20000
+# Running Key (Vigenere-family, running-TEXT key). KNOWN-KEY mode: -runningkeyfile supplies the
+# key text (the classic book-cipher attack / dragging a known text as the key); the family is
+# swept and the n-gram picks Vigenere. Deterministic exact decrypt. Blind recovery is a documented
+# limitation (running key is gamed without a key or crib) -- see tests/test_running_key_solver.c.
+fast | running_key_known    | running-key   | running_key_known.txt   | -logprob -runningkeyfile running_key_known.key
 # Period column order (AZdecrypt): periodic column-permutation transposition, composed to 2 stages.
 # Deterministic exhaustive solver (no -nrestarts/-nhillclimbs); this 168-letter case is a two-stage
 # cipher (56x3 UTP P:2 then 4x42 TP P:3) the solver inverts. See tests/test_period_column*.c.

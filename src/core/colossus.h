@@ -118,8 +118,9 @@ typedef struct CribDrag {
 #define AFFINE             87  // Affine: monoalphabetic CT = (a*PT + b) mod 26, gcd(a,26)=1; deterministic-exhaustive 12 multipliers x 26 shifts = 312 keys
 #define QUAG_TRANS         88  // Layered (Paradigm): outer Quagmire III (keyed alphabet) o inner columnar transposition, -depth {0,1,2}; strip Quag by monogram, solve transposition by n-gram, refine cycleword through it
 #define HILL_QUAG          89  // Layered (Paradigm): outer Hill(kxk) o inner Quagmire III; search the Hill matrix by the inner Quag's period-P columnar IoC (key-independent), then strip Hill and solve the Quagmire
+#define RUNNING_KEY        90  // Running Key (ACA): Vigenere-family with a running-TEXT key (key length == message length, no period). Self-keyed (plaintext's first half keys its second), independent-key, or known-key (-runningkeyfile); blind search scores BOTH streams as English (beam warm start + anneal over the key stream)
 
-#define N_CIPHER_TYPES     90   // number of real cipher-type codes (0..89 inclusive)
+#define N_CIPHER_TYPES     91   // number of real cipher-type codes (0..90 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
@@ -491,6 +492,15 @@ typedef struct {
     // reported candidate (see load_check_solution()/print_solution_check() in utils.c).
     bool check_solution_present;
     char check_solution_file[MAX_FILENAME_LEN];
+
+    // Running Key (RUNNING_KEY). runningkey_present + runningkey_file supply a KNOWN key
+    // text (-runningkeyfile: deterministic decrypt, e.g. drag K1/K2/K3 as a running key).
+    // runningkey_independent (-indepkey) selects the general blind mode (key is an
+    // unrelated English text) over the ACA default (self-keyed: the plaintext's first half
+    // is its own running key, so the whole 2N passage is recovered + a seam reward).
+    bool runningkey_present;
+    char runningkey_file[MAX_FILENAME_LEN];
+    bool runningkey_independent;
 
 } ColossusConfig;
 

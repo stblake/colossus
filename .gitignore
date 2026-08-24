@@ -97,6 +97,9 @@ tools/morbit_gen
 tests/test_straddling_checkerboard
 tests/test_straddling_checkerboard_solver
 tools/straddling_checkerboard_gen
+tests/test_running_key
+tests/test_running_key_solver
+tools/running_key_gen
 # Raw Gutenberg corpus downloads — reproducible from the tracked list.tsv, not
 # redistributed (the built ngram_data/ tables are what persist). Usually deleted
 # post-build, but ignored here so a present books/ is never accidentally tracked.

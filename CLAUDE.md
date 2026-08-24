@@ -187,6 +187,15 @@ Own CipherModels, polyalpha-adjacent:
 - `56/57/58` progkey[-var/-beau] — periodic key + per-group drift; period × progression enumerated.
 - `66/67/68` intkey[-var/-beau] — periodic keyword reset at break points; period swept + strategy enumerated.
 - `69` condi — plaintext-feedback substitution over keyed σ.
+- `90` running-key/runningkey/rk — Vigenère-family with a running-TEXT key (key length ==
+  message length, no period). ACA self-keyed by default (the plaintext's first half is its own
+  running key, so the whole 2N passage is recovered) — `-indepkey` for an independent-key text,
+  `-runningkeyfile <file>` for a KNOWN key (deterministic decrypt; the drag-K1/K2/K3 capability).
+  Four families (Vigenère/Beaufort/Variant/Porta) swept, n-gram picks (`-variant`/`-beaufort`
+  pin). Blind scores BOTH streams as English (beam warm start + anneal over the key stream);
+  cribs are hard-ANCHORED (a known plaintext letter forces the key letter). BLIND recovery is a
+  documented limitation (running key is gamed without a key or crib — see notable findings);
+  known-key is exact and crib-anchoring recovers a bounded free gap. -logprob (+ quintgrams).
 
 Transposition (isolated by an early branch in `solve_cipher`, optimization not keyword-search):
 - `14` transmatrix · `15` transperoffset · `16` transposition · `17` transcol · `18` transcol2.
@@ -430,6 +439,19 @@ Documented structural facts (asserted or characterized in the solver tests), not
   Known/Unknown Coordinates × Keysquare variants; the label order and canonical unmixed token order
   fold into the map and are not identifiable ciphertext-only. The tractable attack (untapped) is the
   KNOWN-KEYSQUARE variant (search only the 10!×10! label perms).
+- **Running Key** — the classic "two English streams added together". Fixing the key stream K
+  determines the plaintext P = decode(CT, K), so the objective scores BOTH streams jointly (raw
+  n-gram of K folded into `*score_adjust` at the SAME scale as `state_score`'s raw n-gram of P —
+  weighting K by `weight_ngram` swamps P ~12:1 and induces gaming). BLIND recovery is a documented
+  limitation: the joint mean-n-gram does not uniquely pin a solution, so a fluent-but-wrong (K,P)
+  pair out-scores the truth (~25-35% recovery, NOT length-improving — running key's classical
+  security). The RELIABLE modes are KNOWN-KEY (`-runningkeyfile`, exact — the book-cipher attack /
+  the drag-K1/K2/K3 capability) and crib-ANCHORING (a crib letter forces the key letter via
+  `rk_key_from_pt`, so pinned positions are held fixed and only the free positions searched —
+  recovers a bounded free gap: gap ≤ 8 exact, degrading monotonically with gap size). Asserted
+  vs characterized in `test_running_key_solver.c`; `run_tests.sh` case `running_key_known` is the
+  known-key mode. Porta maps between alphabet halves, so a crib is only consistent with the
+  ciphertext in the opposite half (its key is /2-folded).
 
 ## SearchDefaults (per-type schedules)
 

@@ -264,6 +264,7 @@
 #include "aristocrat_solver.h"
 #include "keyphrase_solver.h"
 #include "affine_solver.h"
+#include "running_key_solver.h"
 #include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -379,6 +380,10 @@ void init_config(ColossusConfig *cfg) {
 
     cfg->delimiter = 0;                 // 0 => per-character / 0..25 letter decode (ord())
     cfg->delimiter_present = false;
+
+    cfg->runningkey_present = false;    // Running Key: -runningkeyfile gives a KNOWN key text
+    cfg->runningkey_file[0] = '\0';
+    cfg->runningkey_independent = false; // -indepkey: general blind mode (else ACA self-keyed)
 }
 
 
@@ -879,6 +884,18 @@ int main(int argc, char **argv) {
             strncpy(cfg.check_solution_file, argv[++i], MAX_FILENAME_LEN - 1);
             cfg.check_solution_file[MAX_FILENAME_LEN - 1] = '\0';
             printf("-check-solution-file %s\n", cfg.check_solution_file);
+        } else if (strcmp(argv[i], "-runningkeyfile") == 0) {
+            // Running Key: a file holding the KNOWN running-key TEXT (letters only, at
+            // least as long as the ciphertext) -- e.g. drag K1/K2/K3 as a running key.
+            cfg.runningkey_present = true;
+            strncpy(cfg.runningkey_file, argv[++i], MAX_FILENAME_LEN - 1);
+            cfg.runningkey_file[MAX_FILENAME_LEN - 1] = '\0';
+            printf("-runningkeyfile %s\n", cfg.runningkey_file);
+        } else if (strcmp(argv[i], "-indepkey") == 0) {
+            // Running Key: general blind mode (key is an unrelated English text), vs the
+            // ACA default where the plaintext's first half is its own running key.
+            cfg.runningkey_independent = true;
+            printf("-indepkey\n");
         } else if (strcmp(argv[i], "-excludeletter") == 0) {
             // Drop one (or more) letters from the alphabet, shrinking it to an
             // N<26 letter alphabet with mod-N arithmetic. E.g. -excludeletter P
@@ -1418,6 +1435,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a layered Quagmire III o columnar transposition (Paradigm): strip the outer Quagmire by monogram, solve the inner transposition by n-gram, refine the cycleword through it.\n\n");
     } else if (cfg.cipher_type == HILL_QUAG) {
         printf("\nAttacking a layered Hill o Quagmire III (Paradigm): recover the Hill matrix by the inner Quagmire's period-P columnar statistic (key-independent), then strip the Hill and solve the Quagmire.\n\n");
+    } else if (cfg.cipher_type == RUNNING_KEY) {
+        printf("\nAttacking a Running Key cipher (Vigenere-family with a running-TEXT key; self-keyed / independent blind scores both streams as English, or known-key with -runningkeyfile).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -2157,6 +2176,15 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
 
     if (cfg->cipher_type == FRAC_MORSE) {
         solve_fracmorse(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == RUNNING_KEY) {
+        // Vigenere-family with a running-TEXT key (no period). Self-keyed (ACA) / independent
+        // blind search scores BOTH streams as English (beam warm start + anneal over the key
+        // stream); -runningkeyfile does a known-key deterministic decrypt. Families swept.
+        solve_running_key(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
