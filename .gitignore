@@ -103,6 +103,9 @@ tools/running_key_gen
 tests/test_baconian
 tests/test_baconian_solver
 tools/baconian_gen
+tests/test_compressocrat
+tests/test_compressocrat_solver
+tools/compressocrat_gen
 # Raw Gutenberg corpus downloads — reproducible from the tracked list.tsv, not
 # redistributed (the built ngram_data/ tables are what persist). Usually deleted
 # post-build, but ignored here so a present books/ is never accidentally tracked.

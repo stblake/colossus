@@ -120,8 +120,9 @@ typedef struct CribDrag {
 #define HILL_QUAG          89  // Layered (Paradigm): outer Hill(kxk) o inner Quagmire III; search the Hill matrix by the inner Quag's period-P columnar IoC (key-independent), then strip Hill and solve the Quagmire
 #define RUNNING_KEY        90  // Running Key (ACA): Vigenere-family with a running-TEXT key (key length == message length, no period). Self-keyed (plaintext's first half keys its second), independent-key, or known-key (-runningkeyfile); blind search scores BOTH streams as English (beam warm start + anneal over the key stream)
 #define BACONIAN           91  // Baconian (ACA): biliteral 5-symbol substitution (fixed 24-letter table, I=J/U=V) concealed in cover text; search the a/b CLASSIFIER over per-letter/per-word grouping (canonical sweeps + free anneal), decode via the fixed table, biliteral-validity reward
+#define COMPRESSOCRAT      92  // Compressocrat (ACA): fractionation twin of Fractionated Morse; FIXED prefix-free {1,2,3} Huffman code + keyed 26-alphabet mapping trigraphs (333 excluded) to ciphertext letters; length-changing decode, keyed-alphabet anneal + validity reward
 
-#define N_CIPHER_TYPES     92   // number of real cipher-type codes (0..91 inclusive)
+#define N_CIPHER_TYPES     93   // number of real cipher-type codes (0..92 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 // Baconian grouping mode (-baconmode / cfg.bacon_mode): which cover unit is one a/b symbol.

@@ -266,6 +266,7 @@
 #include "affine_solver.h"
 #include "running_key_solver.h"
 #include "baconian_solver.h"
+#include "compressocrat_solver.h"
 #include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -1449,6 +1450,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Running Key cipher (Vigenere-family with a running-TEXT key; self-keyed / independent blind scores both streams as English, or known-key with -runningkeyfile).\n\n");
     } else if (cfg.cipher_type == BACONIAN) {
         printf("\nAttacking a Baconian cipher (biliteral 5-symbol substitution concealed in cover text; search the a/b classifier over per-letter/per-word grouping, decode via the fixed 24-letter table).\n\n");
+    } else if (cfg.cipher_type == COMPRESSOCRAT) {
+        printf("\nAttacking a Compressocrat cipher (fractionation twin of Fractionated Morse: a fixed {1,2,3} Huffman code + a keyed 26-alphabet mapping trigraphs to ciphertext letters; keyed-alphabet anneal with a validity reward).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -2206,6 +2209,15 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         // per-word grouping needs word boundaries, so solve_baconian re-parses
         // ciphertext_str). Searches the a/b classifier; decode via the fixed 24-letter table.
         solve_baconian(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == COMPRESSOCRAT) {
+        // Fractionation twin of Fractionated Morse: a FIXED {1,2,3} Huffman code + a keyed
+        // 26-alphabet mapping trigraphs (333 excluded) to ciphertext letters. Keyed-alphabet
+        // anneal over sigma; length-changing decode tiled to C with a validity reward.
+        solve_compressocrat(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

@@ -181,6 +181,12 @@ slow | cm_bifid_pride | cm-bifid | cm_bifid_pride.txt | -logprob -period 7 -nres
 # length and folds in a Morse-validity reward. Recovers well into the short ACA range -- lean budget
 # here; the length cliff + per-scheme calibration are exercised by tests/test_fracmorse_solver.c.
 slow | fracmorse_pride | fracmorse | fracmorse_pride.txt | -logprob -nrestarts 4 -nhillclimbs 60000 -inittemp 0.30 -backtrackprob 0.3
+# Compressocrat (fractionation twin of Fractionated Morse: a fixed {1,2,3} Huffman code + a keyed
+# 26-alphabet mapping trigraphs to ciphertext letters, keyed-alphabet anneal + validity reward). It
+# COMPRESSES, so the ciphertext is shorter than the plaintext -- short-length fractionation gaming
+# makes the ACA 110-150 range unreliable; this case is a ~300-letter plaintext (the reliable range).
+# The length cliff + per-scheme calibration are exercised by tests/test_compressocrat_solver.c.
+slow | compressocrat_pp | compressocrat | compressocrat_pp.txt | -logprob -nrestarts 12 -nhillclimbs 100000 -inittemp 0.30
 # Progressive Key (periodic Vigenere/Variant/Beaufort + per-group constant key drift). The climbed
 # state is the P per-column base shifts (monogram-warm-started); period + progression pinned here to
 # keep the cases fast -- the blind P and blind progression sweeps are exercised by

@@ -274,6 +274,18 @@ Morse / checkerboard (digit-stream input parsed from `ciphertext_str`):
   inner beam-Viterbi (spaces transparent → context carries across words); separator picked by
   word-length fit, cross-config winner by WHOLE-WORD coverage. Dense polyphonic ⇒ partial,
   high-variance recovery below the 99% floor at all practical lengths; needs quintgrams + dict.
+- `92` compressocrat/compress/comp (ACA): the fractionation TWIN of Fractionated Morse. A FIXED
+  prefix-free {1,2,3} Huffman code maps each letter to a variable-length code (E=31, T=12, …,
+  Z=321113); concatenate, pad with `1` to a multiple of 3, group into trigraphs, map each to a
+  ciphertext LETTER via a keyed 26-alphabet — the 26 trigraphs of {1,2,3}³ EXCLUDING `333` (never
+  occurs; the fracmorse-`xxx` analogue). Ciphertext is normal A–Z and COMPRESSES (shorter than the
+  plaintext). Solver = fracmorse verbatim: keyed-alphabet anneal (`*_move_seq`), tile the length-
+  changing greedy-prefix-parse decode to C, fold `nv/nt` validity into `score_adjust`. KEY LIMITATION:
+  the compression shortens the scoring signal, so short-length fractionation GAMING is worse than
+  fracmorse — the ACA 110-150 range (and some keyed alphabets to ~250) is gamed (the true key is not
+  the global n-gram max; more restarts/quintgrams don't help), reliable only from ~300; even @300 the
+  anneal can stick in a gaming local optimum for an unlucky seed (truth IS the max), so the solver
+  test asserts best-of-N seeds (grandpré pattern). -logprob (+ quadgrams; quints don't help).
 
 Biliteral (concealment in cover text):
 - `91` baconian/bacon/bac (ACA): each plaintext letter → a 5-symbol a/b group via the FIXED
@@ -475,7 +487,7 @@ Documented structural facts (asserted or characterized in the solver tests), not
 
 `init_config()` globals suit the polyalphabetic/transposition score scale. A type whose
 score lives on a different scale gets a tuned profile in the compiled-in registry
-(`g_search_defaults[]` in `colossus.c`, keyed by cipher type), carrying anneal (`a_*`),
+(`g_search_defaults[]` in `engine.c`, keyed by cipher type), carrying anneal (`a_*`),
 shotgun (`s_*`), and PSO (`p_*`) knobs. `main()` overlays the matching profile before the
 arg loop, so precedence is **globals < registry < explicit CLI flags**. Types with no
 entry keep the global defaults bit-for-bit (regression suite unaffected). This moves magic
