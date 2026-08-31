@@ -121,8 +121,10 @@ typedef struct CribDrag {
 #define RUNNING_KEY        90  // Running Key (ACA): Vigenere-family with a running-TEXT key (key length == message length, no period). Self-keyed (plaintext's first half keys its second), independent-key, or known-key (-runningkeyfile); blind search scores BOTH streams as English (beam warm start + anneal over the key stream)
 #define BACONIAN           91  // Baconian (ACA): biliteral 5-symbol substitution (fixed 24-letter table, I=J/U=V) concealed in cover text; search the a/b CLASSIFIER over per-letter/per-word grouping (canonical sweeps + free anneal), decode via the fixed table, biliteral-validity reward
 #define COMPRESSOCRAT      92  // Compressocrat (ACA): fractionation twin of Fractionated Morse; FIXED prefix-free {1,2,3} Huffman code + keyed 26-alphabet mapping trigraphs (333 excluded) to ciphertext letters; length-changing decode, keyed-alphabet anneal + validity reward
+#define TWIN_BIFID         93  // Twin Bifid (ACA): two Bifid messages sharing ONE keyed 5x5 Polybius square at DIFFERENT periods (the plaintexts share a common phrase); joint single-square anneal scoring both decrypts (~2x n-gram signal); second ciphertext via -cipher2, periods -period/-period2
+#define TWIN_TRIFID        94  // Twin Trifid (ACA): the Trifid analogue -- two Trifid messages sharing ONE keyed 3x3x3 cube at different periods; joint single-cube anneal over both decrypts; second ciphertext via -cipher2, periods -period/-period2
 
-#define N_CIPHER_TYPES     93   // number of real cipher-type codes (0..92 inclusive)
+#define N_CIPHER_TYPES     95   // number of real cipher-type codes (0..94 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 // Baconian grouping mode (-baconmode / cfg.bacon_mode): which cover unit is one a/b symbol.
@@ -512,6 +514,18 @@ typedef struct {
     // Baconian (BACONIAN): the concealment grouping mode (-baconmode). BAC_MODE_AUTO
     // (default) sweeps both per-letter and per-word; BAC_MODE_LETTER / BAC_MODE_WORD pin one.
     int bacon_mode;
+
+    // Twin Bifid / Twin Trifid: a SECOND ciphertext sharing the same key at a DIFFERENT
+    // period. -cipher2 <file> sets twincipher_present + twincipher_file; main() reads the
+    // file into a buffer and points twincipher_str at it before solve_cipher (the single-
+    // string solve_cipher signature can't carry a second stream). The in-process solver
+    // tests set twincipher_str directly (no file). period2 (-period2) pins the second
+    // message's period (period pins the first, reusing the shared -period).
+    bool twincipher_present;
+    char twincipher_file[MAX_FILENAME_LEN];
+    char *twincipher_str;
+    int  period2;
+    bool period2_present;
 
 } ColossusConfig;
 
@@ -1039,6 +1053,16 @@ void cm_bifid_encrypt(const int plain[], int len, const int sq1[], const int sq2
 void cm_bifid_decrypt(const int cipher[], int len, const int sq1[], const int sq2[],
                       int side, int period, int out[]);
 
+// Twin Bifid cipher (twin_bifid.c). TWO Bifid messages under the SAME keyed square at two
+// DIFFERENT periods; decrypt writes the two plaintexts CONCATENATED (msg1 in out[0..n1-1],
+// msg2 in out[n1..n1+n2-1]) so a solver can n-gram-score the pair jointly. Thin wrappers over
+// bifid_encrypt/bifid_decrypt (which own the square convention + thread-local scratch).
+void twin_bifid_encrypt(const int plain1[], int n1, const int plain2[], int n2,
+                        const int grid[], int side, int period1, int period2,
+                        int out1[], int out2[]);
+void twin_bifid_decrypt(const int cipher1[], int n1, const int cipher2[], int n2,
+                        const int grid[], int side, int period1, int period2, int out[]);
+
 
 // Nihilist Substitution cipher (nihilist_sub.c). A periodic ADDITIVE cipher over a keyed
 // side x side Polybius square (a permutation of the active n = side*side alphabet, carried
@@ -1182,6 +1206,15 @@ void trifid_build_inverse(const int cube[], int pos[], int n);
 void trifid_encrypt(const int plain[], int len, const int cube[], int side, int period, int out[]);
 void trifid_decrypt(const int cipher[], int len, const int cube[], int side, int period, int out[]);
 void trifid_cube_from_keyword(const int keyword[], int kwlen, int cube[], int n);
+
+// Twin Trifid cipher (twin_trifid.c). TWO Trifid messages under the SAME keyed cube at two
+// DIFFERENT periods; decrypt writes the two plaintexts CONCATENATED (msg1 in out[0..n1-1],
+// msg2 in out[n1..n1+n2-1]) for joint scoring. Thin wrappers over trifid_encrypt/trifid_decrypt.
+void twin_trifid_encrypt(const int plain1[], int n1, const int plain2[], int n2,
+                         const int cube[], int side, int period1, int period2,
+                         int out1[], int out2[]);
+void twin_trifid_decrypt(const int cipher1[], int n1, const int cipher2[], int n2,
+                         const int cube[], int side, int period1, int period2, int out[]);
 
 
 // Digrafid cipher (digrafid.c). A digraphic fractionation cipher over two keyed 27-symbol

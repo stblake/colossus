@@ -228,6 +228,8 @@
 #include "homophonic_solver.h"
 #include "playfair_solver.h"
 #include "bifid_solver.h"
+#include "twin_bifid_solver.h"
+#include "twin_trifid_solver.h"
 #include "phillips_solver.h"
 #include "twosquare_solver.h"
 #include "foursquare_solver.h"
@@ -387,6 +389,11 @@ void init_config(ColossusConfig *cfg) {
     cfg->runningkey_file[0] = '\0';
     cfg->runningkey_independent = false; // -indepkey: general blind mode (else ACA self-keyed)
     cfg->bacon_mode = BAC_MODE_AUTO;     // Baconian: sweep both per-letter and per-word (-baconmode)
+    cfg->twincipher_present = false;     // Twin Bifid/Trifid: -cipher2 gives the SECOND ciphertext
+    cfg->twincipher_file[0] = '\0';
+    cfg->twincipher_str = NULL;
+    cfg->period2 = 0;                    // Twin Bifid/Trifid: -period2 pins the SECOND message's period
+    cfg->period2_present = false;
 }
 
 
@@ -496,6 +503,13 @@ static int run_all_types(int argc, char **argv) {
     char sample[MAX_CIPHER_LENGTH];
     read_cipher_sample(argc, argv, sample, sizeof sample);
 
+    // The Twin types need a SECOND ciphertext (-cipher2); without one they cannot run, so
+    // skip them in the sweep rather than forking a child that only prints an error.
+    bool have_cipher2 = false;
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "-cipher2") == 0 || strcmp(argv[i], "-twincipher") == 0 ||
+            strcmp(argv[i], "-cipher-b") == 0) { have_cipher2 = true; break; }
+
     printf("\n=== -type all: sweeping every plausible cipher type ===\n");
     if (sample[0])
         printf("Ciphertext sample (%zu chars): %.72s%s\n",
@@ -514,6 +528,12 @@ static int run_all_types(int argc, char **argv) {
     for (int t = 0; t < N_CIPHER_TYPES; t++) {
         const char *name = cipher_type_name(t);
         if (!name) continue;   // not a real type code
+
+        if ((t == TWIN_BIFID || t == TWIN_TRIFID) && !have_cipher2) {
+            printf("  SKIP  type %2d  %-38s (needs a second ciphertext: -cipher2 <file>)\n", t, name);
+            n_skipped++;
+            continue;
+        }
 
         if (!cipher_type_plausible(t, sample)) {
             printf("  SKIP  type %2d  %-38s (ciphertext not of this form)\n", t, name);
@@ -768,6 +788,7 @@ int main(int argc, char **argv) {
     SharedData shared;
     int i;
     char single_ciphertext_buffer[MAX_CIPHER_LENGTH];
+    char twin_ciphertext_buffer[MAX_CIPHER_LENGTH];   // -cipher2 (Twin Bifid/Trifid second message)
     char cribtext[MAX_CIPHER_LENGTH];
     char writebin_path[MAX_FILENAME_LEN] = "";  // -writengrambin: dump the loaded table then exit
     bool do_writebin = false;
@@ -899,6 +920,15 @@ int main(int argc, char **argv) {
             // ACA default where the plaintext's first half is its own running key.
             cfg.runningkey_independent = true;
             printf("-indepkey\n");
+        } else if (strcmp(argv[i], "-cipher2") == 0 || strcmp(argv[i], "-twincipher") == 0 ||
+                   strcmp(argv[i], "-cipher-b") == 0) {
+            // Twin Bifid / Twin Trifid: the SECOND ciphertext file (shares the first's key
+            // square/cube at a different period). Stored as a path here; read in main() into
+            // twin_ciphertext_buffer and pointed at by cfg.twincipher_str before solve_cipher.
+            cfg.twincipher_present = true;
+            strncpy(cfg.twincipher_file, argv[++i], MAX_FILENAME_LEN - 1);
+            cfg.twincipher_file[MAX_FILENAME_LEN - 1] = '\0';
+            printf("-cipher2 %s\n", cfg.twincipher_file);
         } else if (strcmp(argv[i], "-baconmode") == 0) {
             // Baconian: which cover unit is one a/b symbol -- letter | word | auto (default).
             const char *m = argv[++i];
@@ -1212,9 +1242,15 @@ int main(int argc, char **argv) {
             printf("-maxdels %d\n", cfg.max_dels);
         } else if (strcmp(argv[i], "-period") == 0) {
             // Bifid/Trifid: pin the fractionation period (block size) vs estimating it.
+            // For Twin Bifid/Trifid this pins the FIRST message's period (see -period2).
             cfg.period_present = true;
             cfg.period = atoi(argv[++i]);
             printf("-period %d\n", cfg.period);
+        } else if (strcmp(argv[i], "-period2") == 0) {
+            // Twin Bifid/Trifid: pin the SECOND message's period (block size) vs estimating it.
+            cfg.period2_present = true;
+            cfg.period2 = atoi(argv[++i]);
+            printf("-period2 %d\n", cfg.period2);
         } else if (strcmp(argv[i], "-maxperiod") == 0) {
             // Bifid/Trifid: largest period the IoC estimator scans (default min(20, len/2)).
             cfg.max_period = atoi(argv[++i]);
@@ -1356,8 +1392,12 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Seriated Playfair cipher (digraphic Playfair over vertical pairs of a two-row seriated layout).\n\n");
     } else if (cfg.cipher_type == BIFID) {
         printf("\nAttacking a Bifid cipher (fractionation over a keyed Polybius square).\n\n");
+    } else if (cfg.cipher_type == TWIN_BIFID) {
+        printf("\nAttacking a Twin Bifid cipher (two Bifid messages sharing one keyed square at different periods).\n\n");
     } else if (cfg.cipher_type == TRIFID) {
         printf("\nAttacking a Trifid cipher (fractionation over a keyed 3x3x3 cube).\n\n");
+    } else if (cfg.cipher_type == TWIN_TRIFID) {
+        printf("\nAttacking a Twin Trifid cipher (two Trifid messages sharing one keyed cube at different periods).\n\n");
     } else if (cfg.cipher_type == HILL) {
         printf("\nAttacking a Hill cipher (polygraphic substitution by a k x k matrix mod 26).\n\n");
     } else if (cfg.cipher_type == PHILLIPS || cfg.cipher_type == PHILLIPS_C ||
@@ -1524,6 +1564,15 @@ int main(int argc, char **argv) {
             g_alpha, g_idx_to_char_arr);
     }
 
+    // Twin Bifid runs on the same 5x5 (25-letter, J->I) square as Bifid (one shared square
+    // decrypting both messages). Force it here -- before load_ngrams -- unless the user
+    // already shrank the alphabet.
+    if (cfg.cipher_type == TWIN_BIFID && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet("J");
+        printf("-type twin-bifid: alphabet forced to %d letters (J->I): %s\n",
+            g_alpha, g_idx_to_char_arr);
+    }
+
     // Phillips runs on the same 5x5 (25-letter, J->I) grid as Playfair/Bifid. Force it
     // here -- before load_ngrams -- unless the user already shrank the alphabet.
     if ((cfg.cipher_type == PHILLIPS || cfg.cipher_type == PHILLIPS_C ||
@@ -1551,6 +1600,14 @@ int main(int argc, char **argv) {
     if (cfg.cipher_type == TRIFID && g_alpha == DEFAULT_ALPHABET_SIZE) {
         init_alphabet_trifid();
         printf("-type trifid: alphabet forced to %d symbols (A..Z + '%c'): %s\n",
+            g_alpha, TRIFID_EXTRA_CHAR, g_idx_to_char_arr);
+    }
+
+    // Twin Trifid runs on the same 27-symbol (A..Z + '+') cube as Trifid (one shared cube
+    // decrypting both messages). Force it here -- before load_ngrams -- unless changed.
+    if (cfg.cipher_type == TWIN_TRIFID && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet_trifid();
+        printf("-type twin-trifid: alphabet forced to %d symbols (A..Z + '%c'): %s\n",
             g_alpha, TRIFID_EXTRA_CHAR, g_idx_to_char_arr);
     }
 
@@ -1779,6 +1836,29 @@ int main(int argc, char **argv) {
         fclose(fp_cipher);
 
         if (cfg.verbose) printf("ciphertext = \n\'%s\'\n\n", single_ciphertext_buffer);
+
+        // Twin Bifid / Twin Trifid: read the SECOND ciphertext (-cipher2) into its own
+        // buffer, first line only, letters only carried through to solve_twin_* (which
+        // decodes it with decode_cipher). Point cfg.twincipher_str at it before the solve.
+        if (cfg.twincipher_present) {
+            if (!file_exists(cfg.twincipher_file)) {
+                printf("\nERROR: missing second cipher file '%s' (-cipher2)\n", cfg.twincipher_file);
+                return 0;
+            }
+            FILE *fp_c2 = fopen(cfg.twincipher_file, "r");
+            int c2i = 0, c2ch;
+            while ((c2ch = fgetc(fp_c2)) != EOF && (cfg.multiline || c2ch != '\n')
+                   && c2i < MAX_CIPHER_LENGTH - 1) {
+                if (c2ch == '\r' || c2ch == '\n') continue;
+                twin_ciphertext_buffer[c2i++] = (char) c2ch;
+            }
+            twin_ciphertext_buffer[c2i] = '\0';
+            while (c2i > 0 && isspace((unsigned char) twin_ciphertext_buffer[c2i - 1]))
+                twin_ciphertext_buffer[--c2i] = '\0';
+            fclose(fp_c2);
+            cfg.twincipher_str = twin_ciphertext_buffer;
+            if (cfg.verbose) printf("ciphertext 2 = \n\'%s\'\n\n", twin_ciphertext_buffer);
+        }
 
         solve_cipher(single_ciphertext_buffer, cribtext, &cfg, &shared, NULL);
     }
@@ -2075,8 +2155,20 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         return ;
     }
 
+    if (cfg->cipher_type == TWIN_BIFID) {
+        solve_twin_bifid(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
     if (cfg->cipher_type == TRIFID) {
         solve_trifid(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == TWIN_TRIFID) {
+        solve_twin_trifid(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

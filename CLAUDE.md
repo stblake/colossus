@@ -74,7 +74,7 @@ src/transposition/   # pure-transposition solvers + shared helpers
 src/polygraphic/     # square/cube/matrix ciphers — each: primitive + a CipherModel solver
   playfair / bifid / trifid / hill / phillips / twosquare / foursquare / adfgvx
   nihilist_sub / bazeries / portax / slidefair / seriated_playfair / digrafid
-  cm_bifid / trisquare / fracmorse / pollux / morbit / straddling_checkerboard
+  cm_bifid / twin_bifid / twin_trifid / trisquare / fracmorse / pollux / morbit / straddling_checkerboard
 
 src/substitution/    # monoalphabetic / homophonic
   indep_solver / homophonic_solver / ragbaby (+ _solver)
@@ -218,6 +218,22 @@ Polygraphic squares/cubes/matrix:
 - `44` adfgx · `45` adfgvx/adfg · `46/47/48` nihilist-sub[-nc/-m100]/nihsub.
 - `54` bazeries/baz · `55` portax/ptx · `59/60/61` slidefair[-var/-beau]/sf.
 - `62` seriated-playfair/spf · `63` digrafid/df · `64` cm-bifid/cmb · `65` trisquare/3sq.
+- `93` twin-bifid/tbf · `94` twin-trifid/ttf (ACA): TWO Bifid/Trifid messages sharing ONE keyed
+  square/cube at DIFFERENT periods (the plaintexts share a common phrase; ACA 100-150 letters
+  EACH). The shared key is the crack: anneal a SINGLE square/cube (Bifid/Trifid's own state +
+  move set, `score_adjust=0`) while n-gram-scoring the CONCATENATED decrypt of both messages,
+  so every key move is judged against ~2x the text (the Tri-Square "scoring length != raw
+  length" wiring: both ciphertexts held in the scratch, engine scoring length n1+n2, the
+  decrypt hook emits both plaintexts back-to-back). The SECOND ciphertext is supplied with
+  `-cipher2 <file>` (config-carried `twincipher_str`, decoded by the same `decode_cipher` as the
+  primary; tests inject it in-process). Two INDEPENDENT periods: `bifid/trifid_estimate_periods`
+  ranks each message's period, the solver anneals the CROSS PRODUCT of the two top-K lists;
+  `-period` pins message 1, `-period2` pins message 2. Twin Bifid recovers the shared square from
+  ~110 letters each (well below a lone Bifid's ~500 floor -- the twin advantage) with quadgrams;
+  Twin Trifid's 27-cell cube needs QUINTGRAMS and ~210 each. Blind two-period recovery is
+  estimator-limited at ACA lengths (columnar IoC is unreliable on short Bifid/Trifid text, ~400+
+  needed -- the same Bifid-family limitation) so PIN the periods, which the ACA con lets you find.
+  Included in `-type all` only when `-cipher2` is present. `-logprob` (Trifid + quintgrams).
 - `82` checkerboard/checker/cb (keyed 5x5 square, 25-letter J->I; plaintext letter -> (row label,
   col label) digraph). Case auto-detected PER AXIS from the ciphertext (an axis with >5 distinct
   labels is complex). Label ORDER is not identifiable (absorbed by a row/col permutation of the
@@ -428,6 +444,20 @@ Documented structural facts (asserted or characterized in the solver tests), not
 - **CM Bifid** — **even periods are degenerate ciphertext-only** (rows/cols never share an
   output pair → transpose-like square ambiguity, no budget escapes); odd periods recover
   from ~480 letters.
+- **Twin Bifid / Twin Trifid** — the shared key doubles the n-gram signal, so the square/cube
+  recovers from far SHORTER text than a lone message (Twin Bifid ~110 letters each vs a lone
+  Bifid's ~500; Twin Trifid ~210 each vs a lone Trifid's ~500+). Two independent limitations,
+  both asserted/characterized in the solver tests, not solver bugs: (1) **blind PERIOD
+  estimation is the bottleneck**, not square recovery — the columnar-IoC estimator is unreliable
+  on short Bifid/Trifid ciphertext (the true period misses the top-K until ~400 letters), so a
+  fully-blind ACA-length solve is estimator-limited; PIN the periods (`-period`/`-period2`), and
+  a blind sweep of the cross-product of the two top-K period lists otherwise multiplies the
+  budget. (2) **Twin Trifid effectively needs QUINTGRAMS** (the 27-cell cube's rugged landscape
+  is under-signalled by quadgrams at ACA lengths) and is seed-fragile near its ~210 floor, so its
+  registry budget is large (`12×300000`) and its run_tests case pins the periods + uses
+  quintgrams. Second ciphertext is `-cipher2`; the recovered plaintext (and `.solution`) is the
+  two decrypts CONCATENATED. Cribs are not wired (they do not map cleanly onto the concatenated
+  two-message plaintext).
 - **Straddling Checkerboard** — letters recover ~100% from ~100–150 chars, but
   **numeric/figure-shift is a documented limitation**. Solve the FREE code→cell bijection,
   not arrangement+labels (redundant, stalls). No cheap statistic ranks the 45 tokenization

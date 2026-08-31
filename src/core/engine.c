@@ -846,6 +846,37 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 20, .s_n_hill_climbs = 300000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Twin Bifid: a SINGLE keyed 5x5 square (Bifid's 25-cell state and move set) but scored
+    // against BOTH decrypts at once -- the shared square doubles the n-gram signal per move, so
+    // it needs a SMALLER per-config budget than a lone Bifid despite the short ACA lengths. The
+    // budget is PER (p1,p2) period pair, and a fully-blind solve anneals the cross product of the
+    // two messages' IoC top-K, so the per-pair budget is kept modest (4x120000). Same small-scale
+    // mean-log-probability temperature as Bifid. A PSO profile is provided so -method pso is a
+    // tuned scheme too. Tuned/asserted against test_twin_bifid_solver (recovery vs per-message
+    // length; the twin advantage: recovers below the lone-Bifid length floor).
+    { .cipher_type = TWIN_BIFID, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 4, .a_n_hill_climbs = 120000,
+      .a_init_temp = 0.08, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 16, .s_n_hill_climbs = 150000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Twin Trifid: the cube analogue -- a SINGLE keyed 3x3x3 cube (Trifid's 27-cell state and
+    // move set) scored against both decrypts. Larger permutation space than Twin Bifid, so a
+    // slightly larger per-pair budget (6x150000); otherwise identical scheme. Tuned/asserted
+    // against test_twin_trifid_solver.
+    // Twin Trifid: the 27-cell cube is a much rougher landscape than Twin Bifid's 25-cell
+    // square (single-message Trifid needs ~500+ letters), so even with the shared cube's ~2x
+    // joint signal the ACA lengths (100-150 each) sit near the search floor: it effectively
+    // needs QUINTGRAMS (quadgrams do not carry enough signal at 270 combined letters -- see
+    // test_twin_trifid_solver) and a much larger per-config budget (10x300000). The budget is
+    // PER (p1,p2) pair, so a fully-blind sweep is expensive (documented) -- pin the periods
+    // (-period/-period2) for a fast, reliable solve.
+    { .cipher_type = TWIN_TRIFID, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 12, .a_n_hill_climbs = 300000,
+      .a_init_temp = 0.08, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 20, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     { .cipher_type = HILL, .default_shape = SHAPE_ANNEAL,
       .a_n_restarts = 250, .a_n_hill_climbs = 8000,
       .a_init_temp = 0.10, .a_min_temp = 0.001, .a_cooling_rate = 0.0,

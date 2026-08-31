@@ -215,6 +215,11 @@ int parse_cipher_type(const char *arg) {
     // CM Bifid (Conjugated Matrix Bifid: Bifid fractionation over two keyed squares; period swept).
     if (str_eq(arg, "cm-bifid") || str_eq(arg, "cmbifid") || str_eq(arg, "cmb")) return CM_BIFID;
 
+    // Twin Bifid / Twin Trifid (ACA): two messages sharing one keyed square/cube at two
+    // different periods; the second ciphertext is supplied with -cipher2.
+    if (str_eq(arg, "twin-bifid") || str_eq(arg, "twinbifid") || str_eq(arg, "tbf")) return TWIN_BIFID;
+    if (str_eq(arg, "twin-trifid") || str_eq(arg, "twintrifid") || str_eq(arg, "ttf")) return TWIN_TRIFID;
+
     // Progressive Key (periodic base cipher + per-group constant key drift). Check the
     // variant/beaufort aliases before the bare progkey so a substring never shadows them.
     if (str_eq(arg, "progkey-var") || str_eq(arg, "progkey-v") || str_eq(arg, "pkv"))
@@ -410,6 +415,8 @@ const char *cipher_type_name(int type) {
         case SERIATED_PLAYFAIR:       return "Seriated Playfair";
         case DIGRAFID:                return "Digrafid";
         case CM_BIFID:                return "CM Bifid";
+        case TWIN_BIFID:              return "Twin Bifid";
+        case TWIN_TRIFID:             return "Twin Trifid";
         case TRI_SQUARE:              return "Tri-Square";
         case INTERRUPTED_KEY:         return "Interrupted Key (Vigenere)";
         case INTERRUPTED_KEY_VAR:     return "Interrupted Key (Variant)";
@@ -515,6 +522,8 @@ const char *cipher_type_aliases(int type) {
         case SERIATED_PLAYFAIR:       return "seriated-playfair, seriatedplayfair, serpf, spf";
         case DIGRAFID:                return "digrafid, df, dgf";
         case CM_BIFID:                return "cm-bifid, cmbifid, cmb";
+        case TWIN_BIFID:              return "twin-bifid, twinbifid, tbf  (needs -cipher2)";
+        case TWIN_TRIFID:             return "twin-trifid, twintrifid, ttf  (needs -cipher2)";
         case TRI_SQUARE:              return "trisquare, tri-square, 3square, 3sq, trisq";
         case INTERRUPTED_KEY:         return "interrupted-key, interruptedkey, intkey, ik";
         case INTERRUPTED_KEY_VAR:     return "interrupted-key-var, intkey-var, ikv";

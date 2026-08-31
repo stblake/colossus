@@ -175,6 +175,14 @@ slow | digrafid_pride | digrafid | digrafid_pride.txt | -logprob -period 5 -nres
 # pinned here (even periods are a documented ciphertext-only degeneracy) and a lean budget to keep the case
 # fast -- the blind P sweep + odd/even contrast are exercised by tests/test_cm_bifid_solver.c. Alphabet 25 (J->I).
 slow | cm_bifid_pride | cm-bifid | cm_bifid_pride.txt | -logprob -period 7 -nrestarts 4 -nhillclimbs 200000 -inittemp 0.08 -backtrackprob 0.3
+# --- Twin Bifid (two Bifid messages sharing one keyed 5x5 square at DIFFERENT periods; 25-letter,
+# J->I). The second message rides in as -cipher2; the solution is the two decrypts concatenated. The
+# joint 2x n-gram signal recovers both from the ACA lengths (135 each). Alphabet 25 (J->I). ---
+slow | twin_bifid_pp | twin-bifid | twin_bifid_pp_1.txt | -logprob -period 7 -period2 9 -cipher2 twin_bifid_pp_2.txt -nrestarts 4 -nhillclimbs 120000 -inittemp 0.08 -backtrackprob 0.3
+# --- Twin Trifid (two Trifid messages sharing one keyed 3x3x3 cube at DIFFERENT periods; 27-symbol
+# A..Z + '+'). The 27-cell cube needs QUINTGRAMS (overrides the suite's quadgrams) and is reliable
+# from ~210 letters each; -cipher2 supplies message 2. Periods 7 & 8 (not both divisible by 3). ---
+slow | twin_trifid_pp | twin-trifid | twin_trifid_pp_1.txt | -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt -logprob -period 7 -period2 8 -cipher2 twin_trifid_pp_2.txt -nrestarts 12 -nhillclimbs 300000 -inittemp 0.08 -backtrackprob 0.3
 # Fractionated Morse (Morse fractionation over a keyed 26-letter alphabet; trigraph substitution, no
 # period). The alphabet is an ACA KEYED alphabet searched as such (keyword + ascending tail), so it
 # needs -logprob; the decode length varies per key, so the hook tiles the decode to the ciphertext
