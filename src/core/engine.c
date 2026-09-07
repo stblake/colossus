@@ -1192,10 +1192,10 @@ static const SearchDefaults g_search_defaults[] = {
     // plugboard-swap deltas on the mean log-prob scale => a Playfair-like low temperature.
     // Tuned against test_enigma_solver.
     { .cipher_type = ENIGMA, .default_shape = SHAPE_ANNEAL,
-      .a_n_restarts = 4, .a_n_hill_climbs = 8000,
-      .a_init_temp = 0.08, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_n_restarts = 2, .a_n_hill_climbs = 3000,
+      .a_init_temp = 0.06, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
       .a_backtracking_probability = 0.25,
-      .s_n_restarts = 20, .s_n_hill_climbs = 8000,
+      .s_n_restarts = 10, .s_n_hill_climbs = 3000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     // Baconian: the searched key is the 26-letter a/b CLASSIFIER (a small binary labelling on
     // short cover text). Canonical rules are single SWEEP cells (no climb); the ONE free-climb

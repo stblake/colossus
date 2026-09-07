@@ -15,9 +15,10 @@
 //            moving that rotor's start in tandem (IoC), then the middle ring likewise. The
 //            left ring is irrelevant. This converts Gillogly's rings-AAA hit into the true
 //            ring setting (his "rings 1 23 4 / msg 2 7 9").
-//   Phase 3  Plugboard.  A greedy warm start (best-improving pair by n-gram, up to maxplugs)
-//            per candidate, then the shared engine anneals the plugboard (one config per
-//            candidate) under the n-gram (+ crib) fitness and keeps the global best.
+//   Phase 3  Plugboard.  A cheap greedy warm start ranks the candidates; the best few then get
+//            a full deterministic reswap climb (enigma_plugboard_climb). The shared engine then
+//            anneals the plugboard from that seed (one config per candidate) under the n-gram
+//            (+ crib) fitness and keeps the global best.
 //
 // The plugboard phase runs through the standard CipherModel/run_solver engine, so -logprob,
 // cribs (real positional cribs -- Enigma is length-preserving), -method, and -nthreads all
@@ -52,38 +53,103 @@ typedef struct {
     int        maxplugs;
 } EnigmaScratch;
 
-// ------------------------------------------------------------------ greedy plugboard
+// ------------------------------------------------------------------ plugboard climb
+//
+// The plugboard is the ONLY smooth part of the Enigma keyspace (the rotor order/position/ring
+// are a non-smooth needle that phase 1 EXHAUSTS by IoC; annealing them jointly with the plugs
+// cannot climb toward the true rotors -- there is no gradient). Once the rotors are fixed the
+// plugboard is a substitution and hill-climbs cleanly. This is the Pound / Ostwald-Weierud
+// plugboard climb: RESWAP moves (each pass sweeps all C(26,2) "set plug (i,j)" moves + the 26
+// removals and applies the single best-improving one) with a few RESTARTS to escape local
+// optima. Strictly stronger than greedy-add-only, which can never revisit a wrong early plug
+// and so leaves "one stecker short" near-solutions.
 
-double enigma_greedy_plugboard(const EnigmaKey *key, int cipher[], int cipher_len,
+#define ENIGMA_PLUG_RESTARTS 3
+#define ENIGMA_PLUG_CLIMB_TOP 6   // run the full reswap climb on this many best-ranked candidates
+
+// Apply the "set plug (i,j)" move to p IN PLACE: disconnect i and j from their partners, then
+// connect i<->j if there is room. i==j is a pure DISCONNECT (removal). Over all i<=j the move
+// set is add + swap + remove.
+static void enigma_plug_move(int p[26], int i, int j, int maxplugs) {
+    int pi = p[i], pj = p[j];
+    p[pi] = pi; p[i] = i; p[pj] = pj; p[j] = j;
+    if (i != j) {
+        int pairs = 0;
+        for (int k = 0; k < 26; k++) if (p[k] > k) pairs++;
+        if (pairs < maxplugs) { p[i] = j; p[j] = i; }
+    }
+}
+
+static double enigma_plug_score(const EnigmaKey *key, const int plug[26], int cipher[], int len,
+                                float *ngram_data, int ngram_size, int *dec) {
+    EnigmaKey k = *key;
+    memcpy(k.plug, plug, sizeof(int) * 26);
+    enigma_encrypt(cipher, len, &k, dec);
+    return ngram_score(dec, len, ngram_data, ngram_size);
+}
+
+// Fast greedy-ADD plugboard estimate (capped), for cheaply RANKING many rotor candidates
+// before the full climb is spent on the best few. Returns the n-gram score.
+static double enigma_quick_plug(const EnigmaKey *key, int cipher[], int cipher_len,
     float *ngram_data, int ngram_size, int maxplugs, int out_plug[26]) {
     static _Thread_local int dec[MAX_CIPHER_LENGTH];
-    EnigmaKey k = *key;
-    enigma_plug_identity(k.plug);
-    enigma_encrypt(cipher, cipher_len, &k, dec);
-    double best = ngram_score(dec, cipher_len, ngram_data, ngram_size);
-
-    int n_pairs = 0;
-    while (n_pairs < maxplugs) {
-        int ba = -1, bb = -1;
-        double bgain = 0.0;
-        for (int a = 0; a < 26; a++) {
-            if (k.plug[a] != a) continue;               // a already steckered
-            for (int b = a + 1; b < 26; b++) {
-                if (k.plug[b] != b) continue;
-                k.plug[a] = b; k.plug[b] = a;
-                enigma_encrypt(cipher, cipher_len, &k, dec);
-                double s = ngram_score(dec, cipher_len, ngram_data, ngram_size);
-                k.plug[a] = a; k.plug[b] = b;
+    int plug[26]; enigma_plug_identity(plug);
+    double best = enigma_plug_score(key, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
+    for (int n = 0; n < maxplugs; n++) {
+        int ba = -1, bb = -1; double bgain = 1e-9;
+        for (int a = 0; a < 26; a++) { if (plug[a] != a) continue;
+            for (int b = a + 1; b < 26; b++) { if (plug[b] != b) continue;
+                plug[a] = b; plug[b] = a;
+                double s = enigma_plug_score(key, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
+                plug[a] = a; plug[b] = b;
                 if (s - best > bgain) { bgain = s - best; ba = a; bb = b; }
+            } }
+        if (ba < 0) break;
+        plug[ba] = bb; plug[bb] = ba; best += bgain;
+    }
+    memcpy(out_plug, plug, sizeof(int) * 26);
+    return best;
+}
+
+// Full reswap plugboard climb (see above). `seed_plug` (or NULL) is restart 0's starting board
+// -- pass the tier-A greedy result or a Bombe stecker seed so the climb refines it.
+double enigma_plugboard_climb(const EnigmaKey *key, int cipher[], int cipher_len,
+    float *ngram_data, int ngram_size, int maxplugs, const int *seed_plug, int out_plug[26]) {
+    static _Thread_local int dec[MAX_CIPHER_LENGTH];
+    int best_plug[26];
+    double best_overall = -1e18;
+
+    for (int r = 0; r < ENIGMA_PLUG_RESTARTS; r++) {
+        int plug[26];
+        if (r == 0 && seed_plug) memcpy(plug, seed_plug, sizeof(int) * 26);
+        else enigma_plug_identity(plug);
+        if (r > 0) {                                    // diversify: seed with r random plugs
+            int avail[26]; for (int i = 0; i < 26; i++) avail[i] = i; int na = 26;
+            int seedn = (r < maxplugs) ? r : maxplugs;
+            for (int p = 0; p < seedn && na >= 2; p++) {
+                int a = rand_int(0, na); int x = avail[a]; avail[a] = avail[--na];
+                int b = rand_int(0, na); int y = avail[b]; avail[b] = avail[--na];
+                plug[x] = y; plug[y] = x;
             }
         }
-        if (ba < 0) break;                              // no improving pair
-        k.plug[ba] = bb; k.plug[bb] = ba;
-        best += bgain;
-        n_pairs++;
+        double cur = enigma_plug_score(key, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
+        for (;;) {                                      // reswap hill-climb to a local optimum
+            double bestgain = 1e-9; int bi = -1, bj = -1;
+            for (int i = 0; i < 26; i++)
+                for (int j = i; j < 26; j++) {
+                    int p[26]; memcpy(p, plug, sizeof(p));
+                    enigma_plug_move(p, i, j, maxplugs);
+                    double s = enigma_plug_score(key, p, cipher, cipher_len, ngram_data, ngram_size, dec);
+                    if (s - cur > bestgain) { bestgain = s - cur; bi = i; bj = j; }
+                }
+            if (bi < 0) break;
+            enigma_plug_move(plug, bi, bj, maxplugs);
+            cur += bestgain;
+        }
+        if (cur > best_overall) { best_overall = cur; memcpy(best_plug, plug, sizeof(best_plug)); }
     }
-    memcpy(out_plug, k.plug, sizeof(int) * 26);
-    return best;
+    memcpy(out_plug, best_plug, sizeof(int) * 26);
+    return best_overall;
 }
 
 // ------------------------------------------------------------------ IoC search helpers
@@ -454,23 +520,59 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
         scratch.cand[i].ioc = enigma_ioc_of(k, cipher, cipher_len);
     }
 
-    // Phase 3 warm start: plugboard per candidate. A base that already carries a non-empty
-    // plugboard (the Bombe's recovered steckers) is used as the climb seed; otherwise the
-    // Gillogly greedy builds one by n-gram. A pinned plugboard overrides both.
+    // Phase 3 plugboard, two tiers. TIER A ranks every candidate CHEAPLY: a fast greedy-add
+    // plugboard (enigma_quick_plug) and its n-gram score. A pinned plugboard is scored as-is
+    // and left fixed; a base that already carries steckers (the Bombe's recovered plugboard) is
+    // scored as-is but still refined by the tier-B climb.
+    static _Thread_local int qdec[MAX_CIPHER_LENGTH];
+    double qscore[ENIGMA_MAX_CAND];
+    bool   plug_fixed[ENIGMA_MAX_CAND];
     for (int i = 0; i < scratch.n_cand; i++) {
         EnigmaKey *k = &scratch.cand[i].key;
         int plug[26];
         bool have_seed = false;
         for (int j = 0; j < 26; j++) if (k->plug[j] != j) { have_seed = true; break; }
-        if (cfg->enigma_plug_present) memcpy(plug, cfg->enigma_plug, sizeof(int) * 26);
-        else if (have_seed) memcpy(plug, k->plug, sizeof(int) * 26);   // Bombe stecker seed
-        else enigma_greedy_plugboard(k, cipher, cipher_len,
-                 shared->ngram_data, cfg->ngram_size, maxplugs, plug);
+        plug_fixed[i] = cfg->enigma_plug_present;
+        if (cfg->enigma_plug_present) {                     // pinned plugboard: score, don't climb
+            memcpy(plug, cfg->enigma_plug, sizeof(int) * 26);
+            qscore[i] = enigma_plug_score(k, plug, cipher, cipher_len,
+                            shared->ngram_data, cfg->ngram_size, qdec);
+        } else if (have_seed) {                             // Bombe stecker seed: score, refine below
+            memcpy(plug, k->plug, sizeof(int) * 26);
+            qscore[i] = enigma_plug_score(k, plug, cipher, cipher_len,
+                            shared->ngram_data, cfg->ngram_size, qdec);
+        } else {                                            // Gillogly greedy warm start
+            qscore[i] = enigma_quick_plug(k, cipher, cipher_len,
+                            shared->ngram_data, cfg->ngram_size, maxplugs, plug);
+        }
         memcpy(k->plug, plug, sizeof(int) * 26);
-        if (cfg->verbose) {
+    }
+
+    // TIER B: spend the full reswap climb only on the best-ranked few. Ranking with the cheap
+    // greedy first keeps the expensive climb off the no-hope orders that survived phase 1's IoC
+    // cut (matters when -ntopk is large); by default all candidates fall within the cap.
+    int rank[ENIGMA_MAX_CAND];
+    for (int i = 0; i < scratch.n_cand; i++) rank[i] = i;
+    for (int a = 0; a < scratch.n_cand; a++)               // selection sort by qscore desc (n small)
+        for (int b = a + 1; b < scratch.n_cand; b++)
+            if (qscore[rank[b]] > qscore[rank[a]]) { int t = rank[a]; rank[a] = rank[b]; rank[b] = t; }
+    int n_climb = (scratch.n_cand < ENIGMA_PLUG_CLIMB_TOP) ? scratch.n_cand : ENIGMA_PLUG_CLIMB_TOP;
+    for (int r = 0; r < n_climb; r++) {
+        int i = rank[r];
+        if (plug_fixed[i]) continue;                        // pinned board stays as pinned
+        EnigmaKey *k = &scratch.cand[i].key;
+        int plug[26];
+        qscore[i] = enigma_plugboard_climb(k, cipher, cipher_len, shared->ngram_data,
+                        cfg->ngram_size, maxplugs, k->plug, plug);   // seed from the tier-A board
+        memcpy(k->plug, plug, sizeof(int) * 26);
+    }
+
+    if (cfg->verbose) {
+        for (int i = 0; i < scratch.n_cand; i++) {
+            EnigmaKey *k = &scratch.cand[i].key;
             char pl[128]; enigma_format_plugs(k->plug, pl);
             char ro[64] = {0}; for (int j = 0; j < k->n_wheels; j++) { strcat(ro, enigma_rotor_name(k->rotor[j])); strcat(ro, " "); }
-            printf("  cand %d: %s ioc=%.4f plugs=%s\n", i, ro, scratch.cand[i].ioc, pl);
+            printf("  cand %d: %s ioc=%.4f score=%.4f plugs=%s\n", i, ro, scratch.cand[i].ioc, qscore[i], pl);
         }
     }
 
@@ -552,7 +654,7 @@ void solve_enigma(char *ciphertext_str, char *cribtext_str,
     // then middle-ring-refined and the global top-K by that IoC feed the plugboard climb.
     static EnigmaKey tmpl[64];
     int n_orders = enigma_enumerate_wheel_orders(cfg, tmpl, 64);
-    int K = (cfg->enigma_ntopk > 0) ? cfg->enigma_ntopk : 4;
+    int K = (cfg->enigma_ntopk > 0) ? cfg->enigma_ntopk : 6;
     if (K > ENIGMA_MAX_CAND) K = ENIGMA_MAX_CAND;
 
     EnigmaScratch scratch;

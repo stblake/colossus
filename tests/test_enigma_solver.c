@@ -121,14 +121,14 @@ static void test_registry(void) {
     ColossusConfig cfg;
     init_config(&cfg); cfg.cipher_type = ENIGMA; cfg.method = METHOD_DEFAULT;
     CHECK(apply_cipher_defaults(&cfg, false), "enigma registry: no entry applied");
-    CHECK(cfg.n_restarts == 4 && cfg.n_hill_climbs == 8000,
-          "enigma anneal budget %dx%d, expected 4x8000", cfg.n_restarts, cfg.n_hill_climbs);
-    CHECK(cfg.init_temp > 0.0799 && cfg.init_temp < 0.0801, "enigma init_temp %.4f, expected 0.08", cfg.init_temp);
+    CHECK(cfg.n_restarts == 2 && cfg.n_hill_climbs == 3000,
+          "enigma anneal budget %dx%d, expected 2x3000", cfg.n_restarts, cfg.n_hill_climbs);
+    CHECK(cfg.init_temp > 0.0599 && cfg.init_temp < 0.0601, "enigma init_temp %.4f, expected 0.06", cfg.init_temp);
 
     init_config(&cfg); cfg.cipher_type = ENIGMA; cfg.method = METHOD_SHOTGUN;
     CHECK(apply_cipher_defaults(&cfg, false), "enigma registry (shotgun): no entry");
-    CHECK(cfg.n_restarts == 20 && cfg.n_hill_climbs == 8000,
-          "enigma shotgun budget %dx%d, expected 20x8000", cfg.n_restarts, cfg.n_hill_climbs);
+    CHECK(cfg.n_restarts == 10 && cfg.n_hill_climbs == 3000,
+          "enigma shotgun budget %dx%d, expected 10x3000", cfg.n_restarts, cfg.n_hill_climbs);
 
     init_config(&cfg); cfg.cipher_type = VIGENERE;
     CHECK(!apply_cipher_defaults(&cfg, false), "vigenere should have no registry entry");
