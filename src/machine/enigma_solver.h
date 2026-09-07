@@ -41,14 +41,15 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
     int crib_indices[], int crib_positions[], int n_cribs,
     const EnigmaKey bases[], int n_bases, int maxplugs, SolveResult *result);
 
-// Full "reswap" plugboard climb (Pound / Ostwald-Weierud): from the fixed machine `key` (its
-// plugboard is ignored), hill-climb the plugboard involution by n-gram fitness -- each pass
-// applies the best of all C(26,2) set-plug moves + the 26 removals, with a few random restarts
-// to escape local optima. `seed_plug` (or NULL) starts restart 0 -- pass a greedy warm start or
-// a Bombe stecker seed to refine it. Writes the recovered involution into out_plug[0..25] and
-// returns its n-gram score. Strictly stronger than greedy-add-only (which cannot revisit a
+// Full "reswap" plugboard climb (Pound / Ostwald-Weierud): over the fixed rotor config -- given
+// as its per-position scrambler cache `S` (len*26 ints, built by enigma_build_scrambler, so the
+// climb never re-walks the rotors) -- hill-climb the plugboard involution by n-gram fitness: each
+// pass applies the best of all C(26,2) set-plug moves + the 26 removals, with a few random
+// restarts to escape local optima. `seed_plug` (or NULL) starts restart 0 -- pass a greedy warm
+// start or a Bombe stecker seed to refine it. Writes the recovered involution into out_plug[0..25]
+// and returns its n-gram score. Strictly stronger than greedy-add-only (which cannot revisit a
 // wrong early plug). Drives the ciphertext-only phase-3 climb.
-double enigma_plugboard_climb(const EnigmaKey *key, int cipher[], int cipher_len,
+double enigma_plugboard_climb(const int *S, int cipher[], int cipher_len,
     float *ngram_data, int ngram_size, int maxplugs, const int *seed_plug, int out_plug[26]);
 
 #endif // ENIGMA_SOLVER_H

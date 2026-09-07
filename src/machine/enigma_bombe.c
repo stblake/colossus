@@ -30,6 +30,7 @@
 // across -nthreads over the order x fast-ring work. M4 requires a pinned wheel order.
 
 #include <string.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include "enigma_solver.h"
 
@@ -89,6 +90,11 @@ static void *bombe_worker(void *arg) {
     BombeWork *w = (BombeWork *) arg;
     const ColossusConfig *cfg = w->cfg;
     w->ntop = 0;
+    // Per-unit scrambler table (M3): S[window_triple*26 + c] = the identity-plug scrambler at
+    // each (left,middle,fast) window. Built ONCE per (order x fast-ring) unit, so each start's
+    // crib-span scramblers are gathered by a cheap row copy instead of ne*26 encipherments.
+    // M4's 26^4 table (47 MB) is not built -- nw==4 (and pos-pinned) fall back to the direct build.
+    int *S = NULL;
 
     for (int u = w->u_lo; u < w->u_hi; u++) {
         int o  = u / w->n_rr;
@@ -105,6 +111,19 @@ static void *bombe_worker(void *arg) {
         long total = 1;
         for (int i = 0; i < nw; i++) total *= 26;
 
+        bool use_table = (nw == 3 && !cfg->enigma_pos_present);
+        if (use_table) {
+            if (!S) S = (int *) malloc((size_t) 26 * 26 * 26 * 26 * sizeof(int));
+            EnigmaKey kt = kbase;         // identity plug
+            for (int a = 0; a < 26; a++)
+                for (int b = 0; b < 26; b++)
+                    for (int c = 0; c < 26; c++) {
+                        kt.pos[0] = a; kt.pos[1] = b; kt.pos[2] = c;
+                        int base = ((a * 26 + b) * 26 + c) * 26;
+                        for (int ch = 0; ch < 26; ch++) S[base + ch] = enigma_encipher_letter(&kt, ch);
+                    }
+        }
+
         for (long pp = 0; pp < total; pp++) {
             EnigmaKey k = kbase;
             long q = pp;
@@ -115,14 +134,19 @@ static void *bombe_worker(void *arg) {
                 for (int i = 0; i < 3; i++) k.pos[off + i] = cfg->enigma_pos[i];
             }
 
-            // One-pass scrambler build across the crib span.
+            // One-pass scrambler gather across the crib span (row copy from S, or direct build).
             int scr[BOMBE_MAX_EDGES][26];
             EnigmaKey kk = k;              // plugboard identity
             for (int s = 0; s <= w->maxpos; s++) {
                 enigma_step(&kk);          // stepped s+1 times == crib position s
                 int e = w->want[s];
-                if (e >= 0)
-                    for (int c = 0; c < 26; c++) scr[e][c] = enigma_encipher_letter(&kk, c);
+                if (e >= 0) {
+                    if (use_table)
+                        memcpy(scr[e], &S[((kk.pos[0] * 26 + kk.pos[1]) * 26 + kk.pos[2]) * 26],
+                               26 * sizeof(int));
+                    else
+                        for (int c = 0; c < 26; c++) scr[e][c] = enigma_encipher_letter(&kk, c);
+                }
             }
 
             int best_match = -1, best_steck[26];
@@ -148,6 +172,7 @@ static void *bombe_worker(void *arg) {
             if (cfg->enigma_pos_present) break;
         }
     }
+    if (S) free(S);
     return NULL;
 }
 

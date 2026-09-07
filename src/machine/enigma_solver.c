@@ -24,11 +24,21 @@
 // cribs (real positional cribs -- Enigma is length-preserving), -method, and -nthreads all
 // apply. Phases 1-2 are deterministic IoC pre-passes.
 //
+// PERFORMANCE (all bit-identical): the plugboard-excluded scrambler is a pure function of the
+// window positions, so (1) phase 1's M3 sweep tabulates it for all 26^3 window triples ONCE per
+// (order x fast-ring) unit and decodes each of the 26^3 start positions by a per-char lookup,
+// with the IoC histogram tallied INLINE (no decrypt buffer, no second pass); (2) once phase 2
+// freezes a candidate's rotor config, its whole per-position scrambler is cached so tiers A/B and
+// the engine anneal decode by table lookup instead of re-walking the rotors per plugboard move.
+// The M4 tables (26^4) are too large, so nw==4 (and the pos-pinned single-position case) fall
+// back to the direct enigma_encrypt path.
+//
 // A known-key path (enough of the key pinned via -rotors/-ring/-startpos/-plugboard) skips
 // the search and just decrypts -- the drag/verification capability. The Bombe (crib) attack
 // lives in enigma_bombe.c and is selected by -bombe.
 
 #include <string.h>
+#include <stdlib.h>
 #include <pthread.h>
 #include "enigma_solver.h"
 #include "engine.h"
@@ -51,6 +61,7 @@ typedef struct {
     int        n_cand;
     EnigmaCand cand[ENIGMA_MAX_CAND];
     int        maxplugs;
+    int       *scrambler[ENIGMA_MAX_CAND];  // per-candidate per-position scrambler cache (phase 3)
 } EnigmaScratch;
 
 // ------------------------------------------------------------------ plugboard climb
@@ -80,27 +91,46 @@ static void enigma_plug_move(int p[26], int i, int j, int maxplugs) {
     }
 }
 
-static double enigma_plug_score(const EnigmaKey *key, const int plug[26], int cipher[], int len,
-                                float *ngram_data, int ngram_size, int *dec) {
+// Per-position scrambler cache for the plugboard search. The rotor scrambler (rotors+reflector,
+// plugboard EXCLUDED) is INDEPENDENT of the plugboard, so once the rotor config is frozen (after
+// phase 2) we build S[len*26] ONCE per candidate -- S[i*26+c] = the identity-plug scrambler for
+// input c at message position i (machine stepped i+1 times) -- and every plugboard evaluation
+// reconstructs the full decrypt by two plug lookups + one table lookup per char, with NO rotor
+// walk. Bit-identical to enigma_encrypt(cipher, len, key_with_plug, out).
+static void enigma_build_scrambler(const EnigmaKey *key, int len, int *S) {
     EnigmaKey k = *key;
-    memcpy(k.plug, plug, sizeof(int) * 26);
-    enigma_encrypt(cipher, len, &k, dec);
+    enigma_plug_identity(k.plug);
+    for (int i = 0; i < len; i++) {
+        enigma_step(&k);
+        int base = i * 26;
+        for (int c = 0; c < 26; c++) S[base + c] = enigma_encipher_letter(&k, c);
+    }
+}
+
+static inline void enigma_decrypt_scr(const int *S, const int plug[26],
+                                      const int *cipher, int len, int *out) {
+    for (int i = 0; i < len; i++) out[i] = plug[S[i * 26 + plug[cipher[i]]]];
+}
+
+static double enigma_plug_score(const int *S, const int plug[26], const int *cipher, int len,
+                                float *ngram_data, int ngram_size, int *dec) {
+    enigma_decrypt_scr(S, plug, cipher, len, dec);
     return ngram_score(dec, len, ngram_data, ngram_size);
 }
 
 // Fast greedy-ADD plugboard estimate (capped), for cheaply RANKING many rotor candidates
 // before the full climb is spent on the best few. Returns the n-gram score.
-static double enigma_quick_plug(const EnigmaKey *key, int cipher[], int cipher_len,
+static double enigma_quick_plug(const int *S, int cipher[], int cipher_len,
     float *ngram_data, int ngram_size, int maxplugs, int out_plug[26]) {
     static _Thread_local int dec[MAX_CIPHER_LENGTH];
     int plug[26]; enigma_plug_identity(plug);
-    double best = enigma_plug_score(key, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
+    double best = enigma_plug_score(S, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
     for (int n = 0; n < maxplugs; n++) {
         int ba = -1, bb = -1; double bgain = 1e-9;
         for (int a = 0; a < 26; a++) { if (plug[a] != a) continue;
             for (int b = a + 1; b < 26; b++) { if (plug[b] != b) continue;
                 plug[a] = b; plug[b] = a;
-                double s = enigma_plug_score(key, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
+                double s = enigma_plug_score(S, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
                 plug[a] = a; plug[b] = b;
                 if (s - best > bgain) { bgain = s - best; ba = a; bb = b; }
             } }
@@ -113,7 +143,7 @@ static double enigma_quick_plug(const EnigmaKey *key, int cipher[], int cipher_l
 
 // Full reswap plugboard climb (see above). `seed_plug` (or NULL) is restart 0's starting board
 // -- pass the tier-A greedy result or a Bombe stecker seed so the climb refines it.
-double enigma_plugboard_climb(const EnigmaKey *key, int cipher[], int cipher_len,
+double enigma_plugboard_climb(const int *S, int cipher[], int cipher_len,
     float *ngram_data, int ngram_size, int maxplugs, const int *seed_plug, int out_plug[26]) {
     static _Thread_local int dec[MAX_CIPHER_LENGTH];
     int best_plug[26];
@@ -132,14 +162,14 @@ double enigma_plugboard_climb(const EnigmaKey *key, int cipher[], int cipher_len
                 plug[x] = y; plug[y] = x;
             }
         }
-        double cur = enigma_plug_score(key, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
+        double cur = enigma_plug_score(S, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
         for (;;) {                                      // reswap hill-climb to a local optimum
             double bestgain = 1e-9; int bi = -1, bj = -1;
             for (int i = 0; i < 26; i++)
                 for (int j = i; j < 26; j++) {
                     int p[26]; memcpy(p, plug, sizeof(p));
                     enigma_plug_move(p, i, j, maxplugs);
-                    double s = enigma_plug_score(key, p, cipher, cipher_len, ngram_data, ngram_size, dec);
+                    double s = enigma_plug_score(S, p, cipher, cipher_len, ngram_data, ngram_size, dec);
                     if (s - cur > bestgain) { bestgain = s - cur; bi = i; bj = j; }
                 }
             if (bi < 0) break;
@@ -180,9 +210,32 @@ typedef struct {
     int nP;
 } Phase1Work;
 
+// Scrambler-position table for the M3 sweep. The plugboard-excluded scrambler
+// (enigma_encipher_letter) is a pure function of the CURRENT window triple (left, middle,
+// fast) -- the stepping history is irrelevant -- so for a fixed (order x fast-ring) unit we
+// tabulate it for all 26^3 triples ONCE, then every one of the 26^3 start-position decrypts
+// is a per-char step-and-lookup rather than a full rotor walk. Table = 26^3 x 26 ints
+// (1.83 MB), built by iterating the triples directly (identity plug). M4's 26^4 table (47 MB)
+// is not built -- nw==4 (and the pos-pinned single-position case) fall back to enigma_ioc_of.
+#define ENIGMA_S_STRIDE 26
+static inline int enigma_s_index(int a, int b, int c) {   // (left,middle,fast) -> table row*26
+    return ((a * 26 + b) * 26 + c) * ENIGMA_S_STRIDE;
+}
+
+// IoC from a prebuilt 0..25 histogram -- bit-identical to index_of_coincidence() on an all-
+// letters decrypt (the >25 tally bins it sums are always 0 for Enigma output). Lets the table
+// path tally inline (no dec[] buffer, no second pass over the decrypt).
+static inline float enigma_ioc_from_counts(const int freq[26], int len) {
+    double ioc = 0.0;
+    for (int i = 0; i < 26; i++) ioc += freq[i] * (freq[i] - 1);
+    ioc /= len * (len - 1);
+    return (float) ioc;
+}
+
 static void *enigma_phase1_worker(void *arg) {
     Phase1Work *w = (Phase1Work *) arg;
     const ColossusConfig *cfg = w->cfg;
+    int *S = NULL;                      // per-unit scrambler table (malloc'd once per worker)
     w->nP = 0;
     for (int u = w->u_lo; u < w->u_hi; u++) {
         int o = u / w->n_rr, rr = w->rr_base + (u % w->n_rr);
@@ -196,6 +249,22 @@ static void *enigma_phase1_worker(void *arg) {
         kb.ring[nw - 1] = rr;
         long total = 1;
         for (int i = 0; i < nw; i++) total *= 26;
+
+        // Build the scrambler table for this unit (M3 sweeps only).
+        bool use_table = (nw == 3 && !cfg->enigma_pos_present);
+        if (use_table) {
+            if (!S) S = (int *) malloc((size_t) 26 * 26 * 26 * ENIGMA_S_STRIDE * sizeof(int));
+            EnigmaKey kt = kb;
+            enigma_plug_identity(kt.plug);
+            for (int a = 0; a < 26; a++)
+                for (int b = 0; b < 26; b++)
+                    for (int c = 0; c < 26; c++) {
+                        kt.pos[0] = a; kt.pos[1] = b; kt.pos[2] = c;
+                        int base = enigma_s_index(a, b, c);
+                        for (int ch = 0; ch < 26; ch++) S[base + ch] = enigma_encipher_letter(&kt, ch);
+                    }
+        }
+
         for (long pp = 0; pp < total; pp++) {
             EnigmaKey k = kb;
             long q = pp;
@@ -205,7 +274,19 @@ static void *enigma_phase1_worker(void *arg) {
                 if (nw == 4) k.pos[0] = 0;
                 for (int i = 0; i < 3; i++) k.pos[off + i] = cfg->enigma_pos[i];
             }
-            double ioc = enigma_ioc_of(&k, w->cipher, w->cipher_len);
+            double ioc;
+            if (use_table) {
+                EnigmaKey ks = k;       // identity plug (kb.plug) -> S is the full decrypt
+                int len = w->cipher_len;
+                int freq[26] = {0};
+                for (int i = 0; i < len; i++) {
+                    enigma_step(&ks);
+                    freq[S[enigma_s_index(ks.pos[0], ks.pos[1], ks.pos[2]) + w->cipher[i]]]++;
+                }
+                ioc = enigma_ioc_from_counts(freq, len);
+            } else {
+                ioc = enigma_ioc_of(&k, w->cipher, w->cipher_len);
+            }
             if (w->nP < ENIGMA_PHASE1_TOPP) { w->posP[w->nP] = k; w->iocP[w->nP] = ioc; w->nP++; }
             else {
                 int worst = 0;
@@ -215,6 +296,7 @@ static void *enigma_phase1_worker(void *arg) {
             if (cfg->enigma_pos_present) break;
         }
     }
+    if (S) free(S);
     return NULL;
 }
 
@@ -367,9 +449,9 @@ static void enigma_copy(const SolverConfig *cc, const SolverState *src, SolverSt
 static void enigma_decrypt_hook(const SolverCtx *ctx, const SolverConfig *cc,
                                 SolverState *st, int *out, double *score_adjust) {
     const EnigmaScratch *s = (const EnigmaScratch *) ctx->model_scratch;
-    EnigmaKey k = s->cand[cc->aux[0]].key;
-    memcpy(k.plug, st->key, sizeof(int) * 26);
-    enigma_encrypt(ctx->cipher, ctx->cipher_len, &k, out);
+    // Rotor config is fixed; only st->key (the plugboard) varies -- decode via the prebuilt
+    // per-position scrambler (no rotor walk). Bit-identical to enigma_encrypt with this plug.
+    enigma_decrypt_scr(s->scrambler[cc->aux[0]], st->key, ctx->cipher, ctx->cipher_len, out);
     *score_adjust = 0.0;
 }
 
@@ -520,6 +602,14 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
         scratch.cand[i].ioc = enigma_ioc_of(k, cipher, cipher_len);
     }
 
+    // Rotor config is now frozen for every candidate -> build each one's per-position scrambler
+    // cache ONCE, so all the plugboard tiers (and the engine anneal) decode by table lookup
+    // rather than re-walking the rotors per plugboard move.
+    for (int i = 0; i < scratch.n_cand; i++) {
+        scratch.scrambler[i] = (int *) malloc((size_t) cipher_len * 26 * sizeof(int));
+        enigma_build_scrambler(&scratch.cand[i].key, cipher_len, scratch.scrambler[i]);
+    }
+
     // Phase 3 plugboard, two tiers. TIER A ranks every candidate CHEAPLY: a fast greedy-add
     // plugboard (enigma_quick_plug) and its n-gram score. A pinned plugboard is scored as-is
     // and left fixed; a base that already carries steckers (the Bombe's recovered plugboard) is
@@ -535,14 +625,14 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
         plug_fixed[i] = cfg->enigma_plug_present;
         if (cfg->enigma_plug_present) {                     // pinned plugboard: score, don't climb
             memcpy(plug, cfg->enigma_plug, sizeof(int) * 26);
-            qscore[i] = enigma_plug_score(k, plug, cipher, cipher_len,
+            qscore[i] = enigma_plug_score(scratch.scrambler[i], plug, cipher, cipher_len,
                             shared->ngram_data, cfg->ngram_size, qdec);
         } else if (have_seed) {                             // Bombe stecker seed: score, refine below
             memcpy(plug, k->plug, sizeof(int) * 26);
-            qscore[i] = enigma_plug_score(k, plug, cipher, cipher_len,
+            qscore[i] = enigma_plug_score(scratch.scrambler[i], plug, cipher, cipher_len,
                             shared->ngram_data, cfg->ngram_size, qdec);
         } else {                                            // Gillogly greedy warm start
-            qscore[i] = enigma_quick_plug(k, cipher, cipher_len,
+            qscore[i] = enigma_quick_plug(scratch.scrambler[i], cipher, cipher_len,
                             shared->ngram_data, cfg->ngram_size, maxplugs, plug);
         }
         memcpy(k->plug, plug, sizeof(int) * 26);
@@ -562,7 +652,7 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
         if (plug_fixed[i]) continue;                        // pinned board stays as pinned
         EnigmaKey *k = &scratch.cand[i].key;
         int plug[26];
-        qscore[i] = enigma_plugboard_climb(k, cipher, cipher_len, shared->ngram_data,
+        qscore[i] = enigma_plugboard_climb(scratch.scrambler[i], cipher, cipher_len, shared->ngram_data,
                         cfg->ngram_size, maxplugs, k->plug, plug);   // seed from the tier-A board
         memcpy(k->plug, plug, sizeof(int) * 26);
     }
@@ -582,6 +672,8 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
     ctx.model_scratch = &scratch;
     ctx.result = result;
     run_solver(&ENIGMA_MODEL, &ctx);
+
+    for (int i = 0; i < scratch.n_cand; i++) free(scratch.scrambler[i]);
 }
 
 // ------------------------------------------------------------------ entry point

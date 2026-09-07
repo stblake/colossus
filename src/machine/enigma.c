@@ -14,6 +14,14 @@
 //      (`pos`), independent of the ring; the wiring transform uses the offset (pos - ring).
 //
 // Wiring strings are the A-> mapping read at ETW entry. The reflector is an involution.
+//
+// PERFORMANCE: the per-char rotor transform folds the whole shift-in / wiring-lookup / shift-out
+// chain into precomputed per-offset tables (g_fwd_off/g_inv_off, built in enigma_init), so a rotor
+// pass is a single table lookup with NO %26 -- this is the dominant cost of every ciphertext-only
+// IoC decrypt. The tables assume the documented contract that letters and pos/ring are in [0,25]
+// (the old %26 form silently masked out-of-range values; the table form does not). enigma_encrypt
+// is the hot loop; the solver additionally caches whole per-position scramblers (see
+// enigma_solver.c / enigma_bombe.c) so a fixed rotor config decodes without re-walking the rotors.
 
 #include <string.h>
 #include <strings.h>
@@ -64,6 +72,14 @@ static int  g_notch[ENIGMA_N_ROTORS][26];     // g_notch[r][pos] != 0 => turnove
 static int  g_refl[ENIGMA_N_REFLECTORS][26];  // reflector involutions
 static bool g_inited = false;
 
+// Offset-folded wiring tables (the per-char hot path). For a rotor at wiring offset
+// s = (pos - ring) mod 26 in [0,25], g_fwd_off[r][s][x] == the OLD rotor_forward result
+// for every x in [0,25] (and likewise g_inv_off for rotor_backward). Precomputing the whole
+// shift-in / lookup / shift-out chain removes all %26 from the encipher loop -- a single
+// dependent load per rotor transform. Read-only after enigma_init; ~54 KB total.
+static int  g_fwd_off[ENIGMA_N_ROTORS][26][26];
+static int  g_inv_off[ENIGMA_N_ROTORS][26][26];
+
 void enigma_init(void) {
     if (g_inited) return;
     for (int r = 0; r < ENIGMA_N_ROTORS; r++) {
@@ -77,24 +93,35 @@ void enigma_init(void) {
     }
     for (int f = 0; f < ENIGMA_N_REFLECTORS; f++)
         for (int i = 0; i < 26; i++) g_refl[f][i] = REFLECTOR_WIRING[f][i] - 'A';
+    // Fold the shift math into per-offset lookup tables (see the g_fwd_off comment).
+    for (int r = 0; r < ENIGMA_N_ROTORS; r++)
+        for (int s = 0; s < 26; s++)
+            for (int x = 0; x < 26; x++) {
+                g_fwd_off[r][s][x] = ((g_fwd[r][(x + s) % 26] - s) % 26 + 26) % 26;
+                g_inv_off[r][s][x] = ((g_inv[r][(x + s) % 26] - s) % 26 + 26) % 26;
+            }
     g_inited = true;
 }
 
 // --- Wiring transforms -----------------------------------------------------------------
+//
+// pos and ring are invariants in [0,25] (maintained by enigma_step's %26 and by init), so
+// s = pos - ring is in [-25,25]; the single conditional lands it in [0,25] = the table index.
+// Bit-identical to the historical ((pos-ring)%26 ...) form for every reachable argument.
 
 static inline int rotor_forward(int rotor_id, int pos, int ring, int x) {
-    int shift = ((pos - ring) % 26 + 26) % 26;
-    int y = g_fwd[rotor_id][(x + shift) % 26];
-    return ((y - shift) % 26 + 26) % 26;
+    int s = pos - ring; if (s < 0) s += 26;
+    return g_fwd_off[rotor_id][s][x];
 }
 
 static inline int rotor_backward(int rotor_id, int pos, int ring, int x) {
-    int shift = ((pos - ring) % 26 + 26) % 26;
-    int y = g_inv[rotor_id][(x + shift) % 26];
-    return ((y - shift) % 26 + 26) % 26;
+    int s = pos - ring; if (s < 0) s += 26;
+    return g_inv_off[rotor_id][s][x];
 }
 
 // --- Stepping --------------------------------------------------------------------------
+
+static inline int step26(int x) { return x == 25 ? 0 : x + 1; }   // (x+1)%26, x in [0,25]
 
 void enigma_step(EnigmaKey *key) {
     int n = key->n_wheels;
@@ -103,12 +130,12 @@ void enigma_step(EnigmaKey *key) {
     int mid_at_notch   = g_notch[rm][key->pos[m]];
     int right_at_notch = g_notch[rr][key->pos[r]];
     if (mid_at_notch) {                    // double step: middle carries the left, and itself
-        key->pos[m] = (key->pos[m] + 1) % 26;
-        key->pos[l] = (key->pos[l] + 1) % 26;
+        key->pos[m] = step26(key->pos[m]);
+        key->pos[l] = step26(key->pos[l]);
     } else if (right_at_notch) {
-        key->pos[m] = (key->pos[m] + 1) % 26;
+        key->pos[m] = step26(key->pos[m]);
     }
-    key->pos[r] = (key->pos[r] + 1) % 26;  // the fast rotor always steps
+    key->pos[r] = step26(key->pos[r]);     // the fast rotor always steps
 }
 
 // --- Encipher --------------------------------------------------------------------------
