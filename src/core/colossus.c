@@ -410,6 +410,7 @@ void init_config(ColossusConfig *cfg) {
     cfg->enigma_ntopk = 0;               // => default 4
     cfg->enigma_maxplugs = 0;            // => default 10
     cfg->enigma_bombe = false;
+    cfg->enigma_adaptive = false;
 }
 
 
@@ -1003,6 +1004,11 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-bombe") == 0) {
             cfg.enigma_bombe = true;
             printf("-bombe\n");
+        } else if (strcmp(argv[i], "-enigmaadaptive") == 0) {
+            // Ostwald-Weierud short-message config selection: rerank rotor configs by a plugboard-
+            // completed n-gram fitness before the plugboard climb (see enigma_adaptive_rank).
+            cfg.enigma_adaptive = true;
+            printf("-enigmaadaptive\n");
         } else if (strcmp(argv[i], "-excludeletter") == 0) {
             // Drop one (or more) letters from the alphabet, shrinking it to an
             // N<26 letter alphabet with mod-N arithmetic. E.g. -excludeletter P

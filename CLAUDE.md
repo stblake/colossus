@@ -343,7 +343,13 @@ Rotor machine (own solver, branches early in `solve_cipher`; not the periodic pi
   `-rotors II,I,III` (comma or space list), `-ring`/`-startpos` (letters A..Z or 1-based numbers),
   `-plugboard "EZ RW …"`; all four pinned ⇒ a deterministic known-key decrypt. `-ntopk`,
   `-maxplugs`. Blind M4 ciphertext-only is impractical (26⁴×orders) — pin `-rotors` or use `-bombe`.
-  -logprob recommended. KATs pin Gillogly + the Ostwald-Weierud B432 vector.
+  -logprob recommended. KATs pin Gillogly + the Ostwald-Weierud B432 vector. `-enigmaadaptive`
+  (Ostwald-Weierud short-message selection) reranks the top rotor configs by a plugboard-COMPLETED
+  n-gram before the climb (the default empty-plugboard-IoC ranking drops the true config on
+  short/many-plug messages), plus an E-Stecker partial exhaustion below 300 letters — lifts the
+  few-plug short floor substantially and roughly doubles many-plug (≥6) short recovery (though full
+  ≥6-plug short solves stay rare, near the fundamental floor). Length-guarded so long messages stay
+  fast; default off ⇒ bit-identical. See [[enigma-adaptive-ranking]].
 
 Substitution:
 - `28` indep · `29` homophonic · `77` ragbaby/rag · `79` aristocrat/arist · `80` patristocrat/patri

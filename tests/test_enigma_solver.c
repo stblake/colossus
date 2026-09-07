@@ -67,8 +67,10 @@ static void plant(const EnigmaKey *k, int len, int *prepared, char *cipher_str) 
 
 // One in-process solve with the wheel order pinned; returns the plaintext recovery fraction.
 // bombe => run the crib attack with a crib_len-letter crib at the message start.
+// adaptive => -enigmaadaptive (the Ostwald-Weierud completed-n-gram config ranking).
 static double solve_once(const int rotors[3], int len, int nplugs,
-                         unsigned plant_seed, unsigned solve_seed, int bombe, int crib_len) {
+                         unsigned plant_seed, unsigned solve_seed, int bombe, int crib_len,
+                         int adaptive) {
     EnigmaKey k;
     make_key(&k, rotors, nplugs, plant_seed);
     int prepared[600];
@@ -83,6 +85,7 @@ static double solve_once(const int rotors[3], int len, int nplugs,
     cfg.enigma_rotors_present = true;
     for (int i = 0; i < 3; i++) cfg.enigma_rotors[i] = rotors[i];
     cfg.enigma_bombe = bombe;
+    cfg.enigma_adaptive = adaptive;
     cfg.n_threads = 4;               // the phase-1 / Bombe searches parallelise over threads
     strcpy(cfg.ciphertext_file, "in-process-test");
     apply_cipher_defaults(&cfg, false);
@@ -116,7 +119,7 @@ static double solve_once(const int rotors[3], int len, int nplugs,
 static double best_over_keys(const int rotors[3], int len, int nplugs, unsigned base, int ntry) {
     double best = 0.0;
     for (int s = 0; s < ntry; s++) {
-        double f = solve_once(rotors, len, nplugs, base + 101u * s, 1u, 0, 0);
+        double f = solve_once(rotors, len, nplugs, base + 101u * s, 1u, 0, 0, /*adaptive*/ 0);
         if (f > best) best = f;
         if (best > 0.999) break;
     }
@@ -165,9 +168,43 @@ static void test_capability(void) {
 static void test_bombe(void) {
     const int rotors[3] = { ENIGMA_III, ENIGMA_I, ENIGMA_II };
     printf("\nEnigma Bombe (crib) recovery (rotors pinned, 30-letter crib):\n");
-    double f = solve_once(rotors, 250, 6, 20260907u, 0, /*bombe*/ 1, /*crib*/ 30);
+    double f = solve_once(rotors, 250, 6, 20260907u, 0, /*bombe*/ 1, /*crib*/ 30, /*adaptive*/ 0);
     printf("  len 250, 6 plugs, crib 30 : %.1f%%\n", 100.0 * f);
     CHECK(f > 0.90, "Bombe recovery %.2f, expected > 0.90 from a crib", f);
+}
+
+// --- -enigmaadaptive: short-message config ranking (Ostwald-Weierud) -----------------
+// Colossus's default pipeline ranks rotor configs by EMPTY-plugboard IoC, which drops the true
+// config on short/many-plug messages before any plugboard climb (the real short-message floor --
+// selection, not plugboard-climb quality). -enigmaadaptive reranks the top configs by a plugboard-
+// COMPLETED n-gram (Tier 1a), plus a forced-E-Stecker partial exhaustion below ~300 letters (Tier
+// 1b), which rescues the true config. Recovery is probabilistic per key (Gillogly), so the gain is
+// a MEAN over a fixed key set, not a per-key guarantee. Two regimes:
+//   130 letters / 3 plugs -- the tractable case: adaptive reliably lifts mean recovery well clear.
+//   150 letters / 6 plugs -- HARD: adaptive lifts mean recovery several-fold (the E-Stecker win)
+//                            but full solves stay rare; the >=6-plug short floor is near the
+//                            fundamental limit (documented, matches the literature).
+static void test_adaptive(void) {
+    const int rotors[3] = { ENIGMA_II, ENIGMA_I, ENIGMA_III };
+    const int nk = 10;
+    double moff3 = 0, mon3 = 0, moff6 = 0, mon6 = 0;
+    for (int s = 0; s < nk; s++) {
+        unsigned ks = 500000u + 1009u * s;
+        moff3 += solve_once(rotors, 130, 3, ks, 1u, 0, 0, /*adaptive*/ 0);
+        mon3  += solve_once(rotors, 130, 3, ks, 1u, 0, 0, /*adaptive*/ 1);
+        moff6 += solve_once(rotors, 150, 6, ks, 1u, 0, 0, /*adaptive*/ 0);
+        mon6  += solve_once(rotors, 150, 6, ks, 1u, 0, 0, /*adaptive*/ 1);
+    }
+    moff3 /= nk; mon3 /= nk; moff6 /= nk; mon6 /= nk;
+    printf("\nEnigma -enigmaadaptive short-message gain (mean over %d keys):\n", nk);
+    printf("  len 130 / 3 plugs : OFF %.1f%%   ON %.1f%%\n", 100.0 * moff3, 100.0 * mon3);
+    printf("  len 150 / 6 plugs : OFF %.1f%%   ON %.1f%%  (hard regime)\n", 100.0 * moff6, 100.0 * mon6);
+    // Tier 1a: the tractable few-plug case improves substantially and clears a real floor.
+    CHECK(mon3 > moff3, "adaptive mean %.2f should beat default %.2f at 130/3", mon3, moff3);
+    CHECK(mon3 > 0.45, "adaptive mean %.2f should clear the short-message floor at 130/3", mon3);
+    // Tier 1b: the E-Stecker exhaustion lifts the hard many-plug case (mean, not necessarily solves).
+    CHECK(mon6 >= moff6, "adaptive mean %.2f should not underperform default %.2f at 150/6", mon6, moff6);
+    CHECK(mon6 > moff6, "adaptive (E-Stecker) mean %.2f should beat default %.2f at 150/6", mon6, moff6);
 }
 
 int main(void) {
@@ -181,6 +218,7 @@ int main(void) {
     test_registry();
     test_capability();
     test_bombe();
+    test_adaptive();
 
     free(shared.ngram_data);
     printf("\n%d checks, %d failures\n", checks, failures);

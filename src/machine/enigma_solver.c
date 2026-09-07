@@ -16,9 +16,21 @@
 //            left ring is irrelevant. This converts Gillogly's rings-AAA hit into the true
 //            ring setting (his "rings 1 23 4 / msg 2 7 9").
 //   Phase 3  Plugboard.  A cheap greedy warm start ranks the candidates; the best few then get
-//            a full deterministic reswap climb (enigma_plugboard_climb). The shared engine then
-//            anneals the plugboard from that seed (one config per candidate) under the n-gram
-//            (+ crib) fitness and keeps the global best.
+//            a full reswap climb (enigma_plugboard_climb). The shared engine then anneals the
+//            plugboard from that seed (one config per candidate) under the n-gram (+ crib) fitness
+//            and keeps the global best.
+//
+// -enigmaadaptive (Ostwald-Weierud 2017) targets the SHORT-message floor. The floor is set NOT by
+// the plugboard-climb quality but by CONFIG SELECTION: phase 1 ranks rotor configs by their
+// empty-plugboard IoC, and with several plugs on a short message the true config's empty-board IoC
+// barely clears the wrong configs, so it is dropped before phase 3 ever runs. -enigmaadaptive
+// reranks the top configs by a plugboard-COMPLETED N-GRAM fitness (enigma_adaptive_rank): a cheap
+// greedy-add n-gram plugboard per config, ranked by the fitness its best plugboard reaches. The
+// n-gram is the RIGHT discriminator -- a wrong config cannot be plugged up to fake real letter-
+// sequence structure -- whereas ranking by completed IoC was measured to HURT (a wrong config's
+// plugboard-maximised IoC rivals the truth: IoC is frequency-only and the plugboard games it).
+// The true config's completed n-gram stands out, so it survives into the top-K and the ordinary
+// phase-3 climb finishes it. Off by default => bit-identical.
 //
 // The plugboard phase runs through the standard CipherModel/run_solver engine, so -logprob,
 // cribs (real positional cribs -- Enigma is length-preserving), -method, and -nthreads all
@@ -47,6 +59,11 @@
 #define ENIGMA_MAX_CAND   16      // top-K wheel-order candidates carried to phase 3
 #define ENIGMA_PHASE1_TOPP 32     // per-worker top positions kept in a phase-1 IoC pass
 #define ENIGMA_PHASE1_ORDERS 12   // distinct orders from the coarse pass fed to the fast-ring pass
+#define ENIGMA_ADAPT_RANK_W 128   // -enigmaadaptive: rerank this many top-empty-IoC configs by a
+                                  // plugboard-COMPLETED n-gram (the Ostwald-Weierud selector)
+#define ENIGMA_ESTECKER   4       // 'E'-'A': the frequent letter whose stecker the ranking exhausts
+#define ENIGMA_ESTECKER_MAXLEN 300 // only exhaust the E-Stecker below this length (above it the cheap
+                                  // single greedy already selects; the 26x cost buys nothing)
 #define ENIGMA_POOL_SIZE  5       // default blind rotor pool = I..V (Services Enigma I)
 static const int ENIGMA_POOL[ENIGMA_POOL_SIZE] = {
     ENIGMA_I, ENIGMA_II, ENIGMA_III, ENIGMA_IV, ENIGMA_V,
@@ -119,13 +136,18 @@ static double enigma_plug_score(const int *S, const int plug[26], const int *cip
 }
 
 // Fast greedy-ADD plugboard estimate (capped), for cheaply RANKING many rotor candidates
-// before the full climb is spent on the best few. Returns the n-gram score.
+// before the full climb is spent on the best few. `seed_plug` (or NULL) is the starting board:
+// NULL = empty (the historical behaviour), or a forced first-plug seed for partial-exhaustion
+// ranking (Ostwald-Weierud E-/I-Stecker -- see enigma_adaptive_rank). Greedily adds plugs until
+// no add improves the n-gram or maxplugs pairs are set. Returns the n-gram score.
 static double enigma_quick_plug(const int *S, int cipher[], int cipher_len,
-    float *ngram_data, int ngram_size, int maxplugs, int out_plug[26]) {
+    float *ngram_data, int ngram_size, int maxplugs, const int *seed_plug, int out_plug[26]) {
     static _Thread_local int dec[MAX_CIPHER_LENGTH];
-    int plug[26]; enigma_plug_identity(plug);
+    int plug[26];
+    if (seed_plug) memcpy(plug, seed_plug, sizeof(int) * 26); else enigma_plug_identity(plug);
     double best = enigma_plug_score(S, plug, cipher, cipher_len, ngram_data, ngram_size, dec);
-    for (int n = 0; n < maxplugs; n++) {
+    int npairs = 0; for (int i = 0; i < 26; i++) if (plug[i] > i) npairs++;
+    while (npairs < maxplugs) {
         int ba = -1, bb = -1; double bgain = 1e-9;
         for (int a = 0; a < 26; a++) { if (plug[a] != a) continue;
             for (int b = a + 1; b < 26; b++) { if (plug[b] != b) continue;
@@ -135,7 +157,7 @@ static double enigma_quick_plug(const int *S, int cipher[], int cipher_len,
                 if (s - best > bgain) { bgain = s - best; ba = a; bb = b; }
             } }
         if (ba < 0) break;
-        plug[ba] = bb; plug[bb] = ba; best += bgain;
+        plug[ba] = bb; plug[bb] = ba; best += bgain; npairs++;
     }
     memcpy(out_plug, plug, sizeof(int) * 26);
     return best;
@@ -397,6 +419,72 @@ static void enigma_topk_insert(EnigmaScratch *s, const EnigmaKey *key, double io
     s->cand[slot].ioc = ioc;
 }
 
+// -enigmaadaptive config selection (Ostwald-Weierud 2017). The default pipeline ranks candidate
+// rotor configs by their EMPTY-plugboard IoC and keeps the top-K -- but with several plugs on a
+// short message the true config's empty-board IoC is barely above the wrong configs, so the true
+// config is dropped before any plugboard climb runs (the real short-message floor -- confirmed by
+// experiment, NOT the plugboard-climb quality). This reranks the top-ENIGMA_ADAPT_RANK_W configs
+// (by empty-board IoC) by a plugboard-completed N-GRAM score: run a cheap greedy-add n-gram
+// plugboard on each (enigma_quick_plug) and rank by the n-gram fitness its best plugboard reaches.
+// The n-gram is the right discriminator -- a WRONG config cannot be plugged up to fake real letter-
+// sequence structure, whereas IoC (frequency only) CAN be gamed by the plugboard (a wrong config's
+// plugboard-maximised IoC rivals the truth, so ranking by completed IoC was measured to HURT). The
+// true config's greedy-plugboard n-gram stands out, so it survives into the top-K and the full
+// phase-3 climb finishes it. The greedy plugboard is discarded (only its score ranks the config);
+// phase 3 re-refines the ring and re-climbs from scratch. Fills scratch with the top-K.
+static void enigma_adaptive_rank(const ColossusConfig *cfg, const SharedData *shared,
+    EnigmaScratch *scratch, EnigmaKey posB[], double iocB[], int nB,
+    int *cipher, int cipher_len, int maxplugs, int K) {
+
+    // Select the top-W configs by the cheap empty-board IoC (a plausibility pre-filter; the true
+    // config's degraded-but-nonzero IoC keeps it in this wide net even with several plugs).
+    int W = (nB < ENIGMA_ADAPT_RANK_W) ? nB : ENIGMA_ADAPT_RANK_W;
+    int cap = (nB < 512) ? nB : 512;
+    static _Thread_local char taken[512];
+    for (int i = 0; i < cap; i++) taken[i] = 0;
+
+    int *S = (int *) malloc((size_t) cipher_len * 26 * sizeof(int));
+    for (int w = 0; w < W; w++) {
+        // pick the next-best remaining config by empty-board IoC
+        int best = -1;
+        for (int i = 0; i < cap; i++)
+            if (!taken[i] && (best < 0 || iocB[i] > iocB[best])) best = i;
+        if (best < 0) break;
+        taken[best] = 1;
+
+        EnigmaKey k = posB[best];
+        if (!cfg->enigma_ring_present)
+            enigma_refine_ring(&k, k.n_wheels - 2, cipher, cipher_len);   // middle ring (as phase 3)
+        enigma_plug_identity(k.plug);            // rank the config; phase 3 climbs the plugboard fresh
+        enigma_build_scrambler(&k, cipher_len, S);
+
+        // Rank the config by a plugboard-completed n-gram: greedy-add from EMPTY, and (SHORT
+        // messages only) from each forced E-partner seed (E<->X, X != E) -- the Ostwald-Weierud
+        // E-Stecker partial exhaustion -- keeping the best completed n-gram. Forcing the frequent
+        // letter E's stecker escapes the greedy-from-empty trap that leaves the TRUE config's score
+        // too low to be SELECTED on short/many-plug messages, where the ranking (not the recovery)
+        // is the ceiling: 100 letters / 6 plugs recovers ~97% with the config pinned vs ~10% blind.
+        // Above ENIGMA_ESTECKER_MAXLEN the cheap single greedy already selects, so the 26x E-Stecker
+        // cost is skipped (keeps -enigmaadaptive fast on long messages). The board is discarded --
+        // only its score ranks the config; phase 3 re-refines the ring and re-climbs from scratch.
+        int board[26];
+        double nsc = enigma_quick_plug(S, cipher, cipher_len, shared->ngram_data, cfg->ngram_size,
+                                       maxplugs, /*seed*/ NULL, board);
+        if (cipher_len < ENIGMA_ESTECKER_MAXLEN) {
+            for (int x = 0; x < 26; x++) {
+                if (x == ENIGMA_ESTECKER) continue;
+                int seed[26]; enigma_plug_identity(seed);
+                seed[ENIGMA_ESTECKER] = x; seed[x] = ENIGMA_ESTECKER;
+                double s = enigma_quick_plug(S, cipher, cipher_len, shared->ngram_data,
+                                             cfg->ngram_size, maxplugs, seed, board);
+                if (s > nsc) nsc = s;
+            }
+        }
+        enigma_topk_insert(scratch, &k, nsc, K);
+    }
+    free(S);
+}
+
 // ------------------------------------------------------------------ CipherModel (phase 3)
 
 static int enigma_enumerate(const SolverCtx *ctx, SolverConfig *out, int cap) {
@@ -633,7 +721,7 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
                             shared->ngram_data, cfg->ngram_size, qdec);
         } else {                                            // Gillogly greedy warm start
             qscore[i] = enigma_quick_plug(scratch.scrambler[i], cipher, cipher_len,
-                            shared->ngram_data, cfg->ngram_size, maxplugs, plug);
+                            shared->ngram_data, cfg->ngram_size, maxplugs, /*seed*/ NULL, plug);
         }
         memcpy(k->plug, plug, sizeof(int) * 26);
     }
@@ -780,13 +868,20 @@ void solve_enigma(char *ciphertext_str, char *cribtext_str,
                                   cipher_indices, cipher_len, posB, iocB, 512);
     }
 
-    // Middle-ring-refine each candidate and keep the global top-K by the refined IoC.
-    for (int i = 0; i < nB; i++) {
-        EnigmaKey k = posB[i];
-        if (!cfg->enigma_ring_present)
-            enigma_refine_ring(&k, k.n_wheels - 2, cipher_indices, cipher_len);   // middle ring
-        double rioc = enigma_ioc_of(&k, cipher_indices, cipher_len);
-        enigma_topk_insert(&scratch, &k, rioc, K);
+    // Select the global top-K candidates fed to the plugboard climb. Default: rank by the cheap
+    // empty-plugboard IoC (after a middle-ring refine). -enigmaadaptive instead reranks by a
+    // plugboard-COMPLETED IoC (Ostwald-Weierud), which rescues the true config on short/high-plug
+    // messages where its empty-board IoC does not stand out (see enigma_adaptive_rank).
+    if (cfg->enigma_adaptive) {
+        enigma_adaptive_rank(cfg, shared, &scratch, posB, iocB, nB, cipher_indices, cipher_len, maxplugs, K);
+    } else {
+        for (int i = 0; i < nB; i++) {
+            EnigmaKey k = posB[i];
+            if (!cfg->enigma_ring_present)
+                enigma_refine_ring(&k, k.n_wheels - 2, cipher_indices, cipher_len);   // middle ring
+            double rioc = enigma_ioc_of(&k, cipher_indices, cipher_len);
+            enigma_topk_insert(&scratch, &k, rioc, K);
+        }
     }
 
     // --- Phases 2-3: ring refine + plugboard climb on the top-K candidates ------------

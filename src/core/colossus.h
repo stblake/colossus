@@ -551,6 +551,13 @@ typedef struct {
     int  enigma_maxplugs;           // 0 => default 10
     bool enigma_bombe;
 
+    // Adaptive config selection (-enigmaadaptive): the Ostwald-Weierud (2017) short-message
+    // technique. The default pipeline ranks rotor configs by their EMPTY-plugboard IoC, which
+    // drops the true config on short/few-plug messages before any plugboard climb; -enigmaadaptive
+    // reranks the top configs by a plugboard-COMPLETED n-gram fitness so the true config survives
+    // (see enigma_adaptive_rank in enigma_solver.c). Default off => bit-identical.
+    bool enigma_adaptive;
+
 } ColossusConfig;
 
 typedef struct {
