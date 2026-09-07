@@ -220,6 +220,9 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "twin-bifid") || str_eq(arg, "twinbifid") || str_eq(arg, "tbf")) return TWIN_BIFID;
     if (str_eq(arg, "twin-trifid") || str_eq(arg, "twintrifid") || str_eq(arg, "ttf")) return TWIN_TRIFID;
 
+    // Enigma rotor machine (ciphertext-only IoC/plugboard attack, or -bombe crib attack).
+    if (str_eq(arg, "enigma") || str_eq(arg, "enig")) return ENIGMA;
+
     // Progressive Key (periodic base cipher + per-group constant key drift). Check the
     // variant/beaufort aliases before the bare progkey so a substring never shadows them.
     if (str_eq(arg, "progkey-var") || str_eq(arg, "progkey-v") || str_eq(arg, "pkv"))
@@ -445,6 +448,7 @@ const char *cipher_type_name(int type) {
         case RUNNING_KEY:             return "Running Key";
         case BACONIAN:                return "Baconian";
         case COMPRESSOCRAT:           return "Compressocrat";
+        case ENIGMA:                  return "Enigma";
         default:                      return NULL;
     }
 }
@@ -552,6 +556,7 @@ const char *cipher_type_aliases(int type) {
         case RUNNING_KEY:             return "running-key, runningkey, rk";
         case BACONIAN:                return "baconian, bacon, bac";
         case COMPRESSOCRAT:           return "compressocrat, compress, comp";
+        case ENIGMA:                  return "enigma, enig";
         default:                      return NULL;
     }
 }

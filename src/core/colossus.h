@@ -123,8 +123,9 @@ typedef struct CribDrag {
 #define COMPRESSOCRAT      92  // Compressocrat (ACA): fractionation twin of Fractionated Morse; FIXED prefix-free {1,2,3} Huffman code + keyed 26-alphabet mapping trigraphs (333 excluded) to ciphertext letters; length-changing decode, keyed-alphabet anneal + validity reward
 #define TWIN_BIFID         93  // Twin Bifid (ACA): two Bifid messages sharing ONE keyed 5x5 Polybius square at DIFFERENT periods (the plaintexts share a common phrase); joint single-square anneal scoring both decrypts (~2x n-gram signal); second ciphertext via -cipher2, periods -period/-period2
 #define TWIN_TRIFID        94  // Twin Trifid (ACA): the Trifid analogue -- two Trifid messages sharing ONE keyed 3x3x3 cube at different periods; joint single-cube anneal over both decrypts; second ciphertext via -cipher2, periods -period/-period2
+#define ENIGMA             95  // Enigma (rotor machine): Services Enigma I + naval M3/M4; ciphertext-only IoC/ring/plugboard attack (Gillogly) OR Turing-Welchman Bombe (-bombe with a crib); rotors I-VIII, Greek Beta/Gamma, reflectors B/C (+thin), plugboard
 
-#define N_CIPHER_TYPES     95   // number of real cipher-type codes (0..94 inclusive)
+#define N_CIPHER_TYPES     96   // number of real cipher-type codes (0..95 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 // Baconian grouping mode (-baconmode / cfg.bacon_mode): which cover unit is one a/b symbol.
@@ -526,6 +527,29 @@ typedef struct {
     char *twincipher_str;
     int  period2;
     bool period2_present;
+
+    // Enigma (ENIGMA). Machine geometry + optional key pins. `enigma_model` is 3 (M3 /
+    // Services Enigma I) or 4 (M4). `enigma_reflector`/`enigma_greek` are ENIGMA_UKW_* /
+    // ENIGMA_BETA|GAMMA ids (see enigma.h). -rotors/-ring/-startpos/-plugboard pin parts of
+    // the key (all four pinned => deterministic known-key decrypt); each *_present flag says
+    // the corresponding pin was supplied. Arrays index the 3 STEPPING wheels left->right;
+    // for M4 the Greek 4th wheel is enigma_greek at position/ring A. enigma_ntopk is the
+    // phase-1 top-K wheel orders carried to the plugboard climb; enigma_maxplugs caps the
+    // plugboard; enigma_bombe selects the Turing-Welchman crib attack.
+    int  enigma_model;              // 3 or 4
+    int  enigma_reflector;          // ENIGMA_UKW_*
+    int  enigma_greek;              // ENIGMA_BETA / ENIGMA_GAMMA (M4)
+    bool enigma_rotors_present;
+    int  enigma_rotors[3];          // stepping-wheel rotor ids, [0]=leftmost stepping wheel
+    bool enigma_ring_present;
+    int  enigma_ring[3];            // 0..25
+    bool enigma_pos_present;
+    int  enigma_pos[3];             // 0..25 window positions
+    bool enigma_plug_present;
+    int  enigma_plug[26];           // involution
+    int  enigma_ntopk;              // 0 => default 4
+    int  enigma_maxplugs;           // 0 => default 10
+    bool enigma_bombe;
 
 } ColossusConfig;
 

@@ -1186,6 +1186,17 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 120, .s_n_hill_climbs = 120000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Enigma: phase 1-2 (IoC rotor/ring pre-pass) and the greedy plugboard warm start do the
+    // heavy lifting in the solver; the engine anneal is a short POLISH of the 26-entry
+    // plugboard involution per candidate, escaping the odd greedy local optimum. Small
+    // plugboard-swap deltas on the mean log-prob scale => a Playfair-like low temperature.
+    // Tuned against test_enigma_solver.
+    { .cipher_type = ENIGMA, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 4, .a_n_hill_climbs = 8000,
+      .a_init_temp = 0.08, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.25,
+      .s_n_restarts = 20, .s_n_hill_climbs = 8000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     // Baconian: the searched key is the 26-letter a/b CLASSIFIER (a small binary labelling on
     // short cover text). Canonical rules are single SWEEP cells (no climb); the ONE free-climb
     // config per grouping mode flips one label per move over a needle-ish landscape (a flip re-

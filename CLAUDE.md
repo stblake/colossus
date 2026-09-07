@@ -79,6 +79,13 @@ src/polygraphic/     # square/cube/matrix ciphers — each: primitive + a Cipher
 src/substitution/    # monoalphabetic / homophonic
   indep_solver / homophonic_solver / ragbaby (+ _solver)
 
+src/machine/         # rotor machines
+  enigma.c/.h            # the Enigma machine primitive (rotors I-VIII, Greek Beta/Gamma,
+                         #   reflectors B/C + thin; stepping w/ double-step; self-reciprocal)
+  enigma_solver.c/.h     # ENIGMA_MODEL + solve_enigma(): ciphertext-only IoC/ring/plugboard
+                         #   attack (Gillogly), known-key decrypt, dispatch to the Bombe
+  enigma_bombe.c         # Turing-Welchman menu + diagonal-board crib attack (solve_enigma_bombe)
+
 makefile  README.md  LICENSE  example.sh
 cipher.txt  crib.txt              # sample ciphertext + crib
 tools/<type>_gen.c                # standalone per-type test-data generators (make <type>_gen)
@@ -317,6 +324,27 @@ Biliteral (concealment in cover text):
   non-canonical recovery at the ACA ≤25-letter maximum is a documented gaming limitation (n-gram is
   weak there; characterized in the solver test, not in run_tests). -logprob (+ quintgrams).
 
+Rotor machine (own solver, branches early in `solve_cipher`; not the periodic pipeline):
+- `95` enigma/enig: the German Enigma. Services Enigma I + naval M3/M4 — rotors I-V (single
+  notch), naval VI-VIII (two notches), Greek 4th wheel Beta/Gamma (`-greek`, `-model m4`),
+  reflectors UKW-B/C and thin B/C (`-reflector`), plugboard up to 10 pairs, ETW=identity. The
+  machine (`enigma.c`) is self-reciprocal with the double-step anomaly. TWO attacks:
+  (1) **ciphertext-only** (Gillogly/Ostwald-Weierud/Pound), the default: a two-pass IoC search
+  (cheap rings-AAA order ranking, then the full fast-ring position search on the top orders —
+  fast-ring searched because a middle-rotor turnover inside the message depends on it),
+  middle-ring refinement, then a greedy plugboard warm start + engine anneal scored by n-grams
+  (+ cribs). Threaded over the wheel-order search (`-nthreads`); blind 60-order is the ~60×26⁴
+  "Bombe workload". Solves Gillogly's 647-letter example blind (`ciphers/tests/enigma_gillogly`).
+  Length/plug-limited & probabilistic per key (Gillogly's documented weakness) — reliable for a
+  few plugs / longer text, marginal short with many plugs. (2) **Turing-Welchman Bombe** (`-bombe`
+  + a crib): a menu + diagonal-board (involution) constraint search recovers the rotor config
+  (order + fast ring + start) from a crib in seconds/threaded, then the shared ring/plugboard
+  completion finishes it — exact recovery even where the IoC attack is marginal. Pins:
+  `-rotors II,I,III` (comma or space list), `-ring`/`-startpos` (letters A..Z or 1-based numbers),
+  `-plugboard "EZ RW …"`; all four pinned ⇒ a deterministic known-key decrypt. `-ntopk`,
+  `-maxplugs`. Blind M4 ciphertext-only is impractical (26⁴×orders) — pin `-rotors` or use `-bombe`.
+  -logprob recommended. KATs pin Gillogly + the Ostwald-Weierud B432 vector.
+
 Substitution:
 - `28` indep · `29` homophonic · `77` ragbaby/rag · `79` aristocrat/arist · `80` patristocrat/patri
   (one solver core: free 26-perm climbed by n-gram with the homophonic incremental fast path;
@@ -512,6 +540,23 @@ Documented structural facts (asserted or characterized in the solver tests), not
   vs characterized in `test_running_key_solver.c`; `run_tests.sh` case `running_key_known` is the
   known-key mode. Porta maps between alphabet halves, so a crib is only consistent with the
   ciphertext in the opposite half (its key is /2-folded).
+- **Enigma** — the ciphertext-only IoC attack is **length- and plug-limited and probabilistic per
+  key** (Gillogly's documented weakness): reliable for a few plugs / longer text, marginal for
+  short text with many plugs; a near-solution (all-but-one stecker) is common and refinable. The
+  correctness-critical subtlety is the **fast-rotor RING** — a coarse rings-AAA position sweep
+  garbles right after the first middle-rotor turnover, so the true position is not reliably rank-1;
+  the solver must search the fast ring (the 60×26⁴ locations) for the decrypt to stay clean to the
+  much-later middle turnover. Done as a two-pass hybrid (cheap AAA order-rank → full fast-ring
+  search on the top orders) so blind stays ~30s threaded instead of minutes. The **left (slow)
+  rotor ring is unidentifiable** (it never steps) — recovered up to the pos−ring offset, so
+  reported rings/pos may differ from the true key while decrypting identically. Ring settings are
+  required for the exact plaintext (they set the turnover timing — a rings-AAA-only solve is
+  correct only up to the first turnover). **Blind M4 is impractical** (26⁴×orders); M4 is served by
+  the machine, the Bombe, and known-key decrypt. The **Bombe (`-bombe` + crib)** is the reliable
+  workhorse where IoC is marginal: it recovers the rotor config + plugboard exactly from a crib,
+  and is the tool for short messages. Solver test asserts the Bombe + a characterised ciphertext-
+  only length/plug curve; `run_tests.sh` case `enigma_gillogly` is the 647-letter Gillogly example
+  (100%, wheel order pinned for speed).
 
 ## SearchDefaults (per-type schedules)
 

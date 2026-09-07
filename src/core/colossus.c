@@ -269,6 +269,7 @@
 #include "running_key_solver.h"
 #include "baconian_solver.h"
 #include "compressocrat_solver.h"
+#include "enigma_solver.h"
 #include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -394,6 +395,21 @@ void init_config(ColossusConfig *cfg) {
     cfg->twincipher_str = NULL;
     cfg->period2 = 0;                    // Twin Bifid/Trifid: -period2 pins the SECOND message's period
     cfg->period2_present = false;
+
+    // Enigma (ENIGMA): default Services Enigma I -- M3, reflector B, Greek Beta (M4 only),
+    // nothing pinned, top-4 wheel orders, 10 plugs, no Bombe. ENIGMA_UKW_B == 0, ENIGMA_BETA
+    // == 8 (see enigma.h) but init_config must not depend on that header, so use literals.
+    cfg->enigma_model = 3;
+    cfg->enigma_reflector = 0;           // ENIGMA_UKW_B
+    cfg->enigma_greek = 8;               // ENIGMA_BETA
+    cfg->enigma_rotors_present = false;
+    cfg->enigma_ring_present = false;
+    cfg->enigma_pos_present = false;
+    cfg->enigma_plug_present = false;
+    for (int i = 0; i < 26; i++) cfg->enigma_plug[i] = i;
+    cfg->enigma_ntopk = 0;               // => default 4
+    cfg->enigma_maxplugs = 0;            // => default 10
+    cfg->enigma_bombe = false;
 }
 
 
@@ -937,6 +953,56 @@ int main(int argc, char **argv) {
             else if (strcmp(m, "auto") == 0)   cfg.bacon_mode = BAC_MODE_AUTO;
             else { printf("ERROR: -baconmode must be letter, word, or auto (got \"%s\")\n", m); return 0; }
             printf("-baconmode %s\n", m);
+        } else if (strcmp(argv[i], "-model") == 0) {
+            // Enigma machine model: m3 (3-rotor, default) or m4 (naval 4-rotor).
+            const char *m = argv[++i];
+            if (!strcmp(m, "m3") || !strcmp(m, "M3") || !strcmp(m, "3")) cfg.enigma_model = 3;
+            else if (!strcmp(m, "m4") || !strcmp(m, "M4") || !strcmp(m, "4")) cfg.enigma_model = 4;
+            else { printf("ERROR: -model must be m3 or m4 (got \"%s\")\n", m); return 0; }
+            printf("-model M%d\n", cfg.enigma_model);
+        } else if (strcmp(argv[i], "-reflector") == 0) {
+            int r = enigma_reflector_from_name(argv[++i]);
+            if (r < 0) { printf("ERROR: -reflector must be B, C, Bthin, or Cthin (got \"%s\")\n", argv[i]); return 0; }
+            cfg.enigma_reflector = r;
+            printf("-reflector %s\n", enigma_reflector_name(r));
+        } else if (strcmp(argv[i], "-greek") == 0) {
+            int g = enigma_rotor_from_name(argv[++i]);
+            if (g != ENIGMA_BETA && g != ENIGMA_GAMMA) { printf("ERROR: -greek must be Beta or Gamma (got \"%s\")\n", argv[i]); return 0; }
+            cfg.enigma_greek = g;
+            printf("-greek %s\n", enigma_rotor_name(g));
+        } else if (strcmp(argv[i], "-rotors") == 0) {
+            // Enigma wheel order: the 3 STEPPING wheels left->right, e.g. -rotors "II I III".
+            int ids[4]; int n = enigma_parse_rotors(argv[++i], ids, 4);
+            if (n != 3) { printf("ERROR: -rotors needs 3 stepping-wheel names, e.g. \"II I III\"\n"); return 0; }
+            for (int j = 0; j < 3; j++) cfg.enigma_rotors[j] = ids[j];
+            cfg.enigma_rotors_present = true;
+            printf("-rotors %s %s %s\n", enigma_rotor_name(ids[0]), enigma_rotor_name(ids[1]), enigma_rotor_name(ids[2]));
+        } else if (strcmp(argv[i], "-ring") == 0 || strcmp(argv[i], "-rings") == 0) {
+            // Ring settings for the 3 stepping wheels: letters "A W D" or 1-based "1 23 4".
+            if (enigma_parse_settings(argv[++i], cfg.enigma_ring, 3) != 3) {
+                printf("ERROR: -ring needs 3 settings, e.g. \"A W D\" or \"1 23 4\"\n"); return 0; }
+            cfg.enigma_ring_present = true;
+            printf("-ring %c %c %c\n", 'A' + cfg.enigma_ring[0], 'A' + cfg.enigma_ring[1], 'A' + cfg.enigma_ring[2]);
+        } else if (strcmp(argv[i], "-startpos") == 0 || strcmp(argv[i], "-pos") == 0) {
+            if (enigma_parse_settings(argv[++i], cfg.enigma_pos, 3) != 3) {
+                printf("ERROR: -startpos needs 3 settings, e.g. \"B G I\"\n"); return 0; }
+            cfg.enigma_pos_present = true;
+            printf("-startpos %c %c %c\n", 'A' + cfg.enigma_pos[0], 'A' + cfg.enigma_pos[1], 'A' + cfg.enigma_pos[2]);
+        } else if (strcmp(argv[i], "-plugboard") == 0 || strcmp(argv[i], "-plugs") == 0 ||
+                   strcmp(argv[i], "-stecker") == 0) {
+            int n = enigma_parse_plugs(argv[++i], cfg.enigma_plug);
+            if (n < 0) { printf("ERROR: -plugboard must be letter pairs, e.g. \"EZ RW MV\"\n"); return 0; }
+            cfg.enigma_plug_present = true;
+            printf("-plugboard %d pair(s)\n", n);
+        } else if (strcmp(argv[i], "-ntopk") == 0) {
+            cfg.enigma_ntopk = atoi(argv[++i]);
+            printf("-ntopk %d\n", cfg.enigma_ntopk);
+        } else if (strcmp(argv[i], "-maxplugs") == 0) {
+            cfg.enigma_maxplugs = atoi(argv[++i]);
+            printf("-maxplugs %d\n", cfg.enigma_maxplugs);
+        } else if (strcmp(argv[i], "-bombe") == 0) {
+            cfg.enigma_bombe = true;
+            printf("-bombe\n");
         } else if (strcmp(argv[i], "-excludeletter") == 0) {
             // Drop one (or more) letters from the alphabet, shrinking it to an
             // N<26 letter alphabet with mod-N arithmetic. E.g. -excludeletter P
@@ -1492,6 +1558,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Baconian cipher (biliteral 5-symbol substitution concealed in cover text; search the a/b classifier over per-letter/per-word grouping, decode via the fixed 24-letter table).\n\n");
     } else if (cfg.cipher_type == COMPRESSOCRAT) {
         printf("\nAttacking a Compressocrat cipher (fractionation twin of Fractionated Morse: a fixed {1,2,3} Huffman code + a keyed 26-alphabet mapping trigraphs to ciphertext letters; keyed-alphabet anneal with a validity reward).\n\n");
+    } else if (cfg.cipher_type == ENIGMA) {
+        printf("\nAttacking an Enigma cipher (rotor machine; ciphertext-only IoC/ring/plugboard attack after Gillogly, a known-key decrypt when pinned, or the Turing-Welchman Bombe with -bombe + a crib).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -2310,6 +2378,15 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         // 26-alphabet mapping trigraphs (333 excluded) to ciphertext letters. Keyed-alphabet
         // anneal over sigma; length-changing decode tiled to C with a validity reward.
         solve_compressocrat(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == ENIGMA) {
+        // Rotor machine. Ciphertext-only IoC/ring/plugboard attack (Gillogly), a
+        // deterministic known-key decrypt when pinned, or the Turing-Welchman Bombe
+        // (-bombe + crib). Heterogeneous key => its own solver, not the polyalpha pipeline.
+        solve_enigma(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

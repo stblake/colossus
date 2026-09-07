@@ -195,6 +195,10 @@ slow | fracmorse_pride | fracmorse | fracmorse_pride.txt | -logprob -nrestarts 4
 # makes the ACA 110-150 range unreliable; this case is a ~300-letter plaintext (the reliable range).
 # The length cliff + per-scheme calibration are exercised by tests/test_compressocrat_solver.c.
 slow | compressocrat_pp | compressocrat | compressocrat_pp.txt | -logprob -nrestarts 12 -nhillclimbs 100000 -inittemp 0.30
+# Enigma: Gillogly's 647-letter ciphertext-only example (reflector B, wheels II I III, rings A W D,
+# msg key B G I, 7 steckers). Blind position/ring/plugboard recovery from a pinned wheel order (the
+# full 60-order blind search is the slower "Bombe workload" -- exercised in tests/test_enigma_solver.c).
+slow | enigma_gillogly | enigma | enigma_gillogly.txt | -logprob -rotors II,I,III -nthreads 4
 # Progressive Key (periodic Vigenere/Variant/Beaufort + per-group constant key drift). The climbed
 # state is the P per-column base shifts (monogram-warm-started); period + progression pinned here to
 # keep the cases fast -- the blind P and blind progression sweeps are exercised by
