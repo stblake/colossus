@@ -846,6 +846,37 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 20, .s_n_hill_climbs = 300000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Twin Bifid: a SINGLE keyed 5x5 square (Bifid's 25-cell state and move set) but scored
+    // against BOTH decrypts at once -- the shared square doubles the n-gram signal per move, so
+    // it needs a SMALLER per-config budget than a lone Bifid despite the short ACA lengths. The
+    // budget is PER (p1,p2) period pair, and a fully-blind solve anneals the cross product of the
+    // two messages' IoC top-K, so the per-pair budget is kept modest (4x120000). Same small-scale
+    // mean-log-probability temperature as Bifid. A PSO profile is provided so -method pso is a
+    // tuned scheme too. Tuned/asserted against test_twin_bifid_solver (recovery vs per-message
+    // length; the twin advantage: recovers below the lone-Bifid length floor).
+    { .cipher_type = TWIN_BIFID, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 4, .a_n_hill_climbs = 120000,
+      .a_init_temp = 0.08, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 16, .s_n_hill_climbs = 150000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Twin Trifid: the cube analogue -- a SINGLE keyed 3x3x3 cube (Trifid's 27-cell state and
+    // move set) scored against both decrypts. Larger permutation space than Twin Bifid, so a
+    // slightly larger per-pair budget (6x150000); otherwise identical scheme. Tuned/asserted
+    // against test_twin_trifid_solver.
+    // Twin Trifid: the 27-cell cube is a much rougher landscape than Twin Bifid's 25-cell
+    // square (single-message Trifid needs ~500+ letters), so even with the shared cube's ~2x
+    // joint signal the ACA lengths (100-150 each) sit near the search floor: it effectively
+    // needs QUINTGRAMS (quadgrams do not carry enough signal at 270 combined letters -- see
+    // test_twin_trifid_solver) and a much larger per-config budget (10x300000). The budget is
+    // PER (p1,p2) pair, so a fully-blind sweep is expensive (documented) -- pin the periods
+    // (-period/-period2) for a fast, reliable solve.
+    { .cipher_type = TWIN_TRIFID, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 12, .a_n_hill_climbs = 300000,
+      .a_init_temp = 0.08, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 20, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     { .cipher_type = HILL, .default_shape = SHAPE_ANNEAL,
       .a_n_restarts = 250, .a_n_hill_climbs = 8000,
       .a_init_temp = 0.10, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
@@ -1144,6 +1175,41 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 120, .s_n_hill_climbs = 120000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Compressocrat: the fractionation twin of Fractionated Morse -- the SAME keyed-alphabet
+    // anneal over a 26-letter sigma (keyword prefix + ascending tail), no period (one config),
+    // tiled length-changing decode + validity reward (so it effectively needs -logprob). Uses
+    // the fracmorse profile: MANY warm restarts, inittemp 0.30. Tuned against
+    // test_compressocrat_solver.
+    { .cipher_type = COMPRESSOCRAT, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 16, .a_n_hill_climbs = 120000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 120, .s_n_hill_climbs = 120000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Enigma: phase 1-2 (IoC rotor/ring pre-pass) and the greedy plugboard warm start do the
+    // heavy lifting in the solver; the engine anneal is a short POLISH of the 26-entry
+    // plugboard involution per candidate, escaping the odd greedy local optimum. Small
+    // plugboard-swap deltas on the mean log-prob scale => a Playfair-like low temperature.
+    // Tuned against test_enigma_solver.
+    { .cipher_type = ENIGMA, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 2, .a_n_hill_climbs = 3000,
+      .a_init_temp = 0.06, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.25,
+      .s_n_restarts = 10, .s_n_hill_climbs = 3000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Baconian: the searched key is the 26-letter a/b CLASSIFIER (a small binary labelling on
+    // short cover text). Canonical rules are single SWEEP cells (no climb); the ONE free-climb
+    // config per grouping mode flips one label per move over a needle-ish landscape (a flip re-
+    // parses every group holding that letter), guided by the biliteral-validity reward -- so
+    // MANY warm restarts with moderate climbs (the decodes are tiny, <=125 letters). The tiled
+    // decode + validity reward make it effectively need -logprob. Tuned against
+    // test_baconian_solver.
+    { .cipher_type = BACONIAN, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 24, .a_n_hill_climbs = 60000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 120, .s_n_hill_climbs = 60000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     // Straddling Checkerboard: the per-config SA MINI-SOLVE pre-pass (in the solver) does the
     // heavy lifting and warm-starts each kept indicator-pair config near the solution, so the
     // engine anneal is a short warm polish (a few restarts). inittemp 0.30 like the other
@@ -1180,6 +1246,17 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 60, .s_n_hill_climbs = 40000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Tridigital: anneal a 26-letter -> 9-group partition, scored by an inner beam-Viterbi decode
+    // (each eval decodes the whole stream, so climbs are pricier than the other digit types -> a
+    // smaller climb budget, but restart-heavy). Each of the kept separator configs is mini-solve
+    // warm-started, so the engine only polishes. Best with -logprob + quintgrams + a -dictionary
+    // (the dense polyphonic decode games raw n-gram; coverage selection needs the dictionary).
+    { .cipher_type = TRIDIGITAL, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 12, .a_n_hill_climbs = 8000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 40, .s_n_hill_climbs = 12000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     // Aristocrat / Patristocrat: a simple 26-letter monoalphabetic substitution, climbed as a free
     // 26-permutation by n-gram score with the homophonic-style INCREMENTAL fast path (each swap is
     // scored as a delta over the touched windows), so iterations are very cheap and the budget can
@@ -1198,6 +1275,37 @@ static const SearchDefaults g_search_defaults[] = {
       .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
       .a_backtracking_probability = 0.30,
       .s_n_restarts = 60, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Checkerboard: once the per-axis label grouping is fixed, the search is a free 25-code -> 25-
+    // letter bijection over the merged codes -- an ARISTOCRAT over 25 symbols -- so it shares the
+    // aristocrat profile (warm freq-rank seed + the homophonic incremental fast path; every move is
+    // a two-code swap, aristocrat granularity, NOT digrafid's coarse keyword move -> temp 0.15, not
+    // 0.30). Restarts are the lever: the simple case is short (60-90 ACA letters) and the complex
+    // case is strongly bimodal (finds the pairing basin or lands in garbage). Best with -logprob.
+    { .cipher_type = CHECKERBOARD, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 12, .a_n_hill_climbs = 200000,
+      .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 60, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Grandpre: decoding is code -> letter, so the search is a HOMOPHONIC map over <= N^2
+    // numeric codes -> 26 letters (single-symbol reassignment moves on the incremental fast
+    // path). Shares the homophonic/aristocrat annealed-square profile; restarts are the lever
+    // (undersampled ~64-code map over the ACA range is bimodal). Best with -logprob.
+    { .cipher_type = GRANDPRE, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 16, .a_n_hill_climbs = 200000,
+      .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 60, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Syllabary: a 100-token composite-map substitution with a length-changing (tiled) decode.
+    // Two-code swap moves on the generic path; more restarts (the 100-token bijection over ~150
+    // codes is severely undersampled and strongly bimodal). Same aristocrat temp scale. -logprob.
+    { .cipher_type = SYLLABARY, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 24, .a_n_hill_climbs = 300000,
+      .a_init_temp = 0.15, .a_min_temp = 0.0005, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 80, .s_n_hill_climbs = 300000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
 };
 

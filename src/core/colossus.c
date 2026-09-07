@@ -228,6 +228,8 @@
 #include "homophonic_solver.h"
 #include "playfair_solver.h"
 #include "bifid_solver.h"
+#include "twin_bifid_solver.h"
+#include "twin_trifid_solver.h"
 #include "phillips_solver.h"
 #include "twosquare_solver.h"
 #include "foursquare_solver.h"
@@ -249,12 +251,25 @@
 #include "condi_solver.h"
 #include "fracmorse_solver.h"
 #include "double_transposition_solver.h"
+#include "layered_solver.h"
+#include "hill_quag_solver.h"
 #include "pollux_solver.h"
 #include "morbit_solver.h"
 #include "straddling_checkerboard_solver.h"
 #include "monome_dinome_solver.h"
+#include "tridigital_solver.h"
+#include "checkerboard_solver.h"
+#include "sequence_transposition_solver.h"
+#include "grandpre_solver.h"
+#include "syllabary_solver.h"
 #include "ragbaby_solver.h"
 #include "aristocrat_solver.h"
+#include "keyphrase_solver.h"
+#include "affine_solver.h"
+#include "running_key_solver.h"
+#include "baconian_solver.h"
+#include "compressocrat_solver.h"
+#include "enigma_solver.h"
 #include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -296,11 +311,13 @@ void init_config(ColossusConfig *cfg) {
     cfg->startkey = 0;
     cfg->max_period = 0;        // 0 => derive from ciphertext length (min(20, len/2))
     cfg->n_periods = 5;         // anneal the estimator's top-K candidate periods
-    cfg->n_primers = 0;         // Gromark pre-pass top-K (0 => auto by ciphertext length)
+    cfg->n_primers = 0;         // Gromark / Sequence Transposition pre-pass top-K (0 => auto by length)
+    cfg->seq_primer_len = 0;    // Sequence Transposition: 0 => primer not supplied (blind pre-pass)
 
     cfg->plaintext_keyword_len_present = false;
     cfg->ciphertext_keyword_len_present = false;
     cfg->cycleword_len_present = false;
+    cfg->n_cycleword_lens = 0;
     cfg->user_plaintext_keyword_present = false;
     cfg->user_ciphertext_keyword_present = false;
 
@@ -368,6 +385,31 @@ void init_config(ColossusConfig *cfg) {
 
     cfg->delimiter = 0;                 // 0 => per-character / 0..25 letter decode (ord())
     cfg->delimiter_present = false;
+
+    cfg->runningkey_present = false;    // Running Key: -runningkeyfile gives a KNOWN key text
+    cfg->runningkey_file[0] = '\0';
+    cfg->runningkey_independent = false; // -indepkey: general blind mode (else ACA self-keyed)
+    cfg->bacon_mode = BAC_MODE_AUTO;     // Baconian: sweep both per-letter and per-word (-baconmode)
+    cfg->twincipher_present = false;     // Twin Bifid/Trifid: -cipher2 gives the SECOND ciphertext
+    cfg->twincipher_file[0] = '\0';
+    cfg->twincipher_str = NULL;
+    cfg->period2 = 0;                    // Twin Bifid/Trifid: -period2 pins the SECOND message's period
+    cfg->period2_present = false;
+
+    // Enigma (ENIGMA): default Services Enigma I -- M3, reflector B, Greek Beta (M4 only),
+    // nothing pinned, top-4 wheel orders, 10 plugs, no Bombe. ENIGMA_UKW_B == 0, ENIGMA_BETA
+    // == 8 (see enigma.h) but init_config must not depend on that header, so use literals.
+    cfg->enigma_model = 3;
+    cfg->enigma_reflector = 0;           // ENIGMA_UKW_B
+    cfg->enigma_greek = 8;               // ENIGMA_BETA
+    cfg->enigma_rotors_present = false;
+    cfg->enigma_ring_present = false;
+    cfg->enigma_pos_present = false;
+    cfg->enigma_plug_present = false;
+    for (int i = 0; i < 26; i++) cfg->enigma_plug[i] = i;
+    cfg->enigma_ntopk = 0;               // => default 4
+    cfg->enigma_maxplugs = 0;            // => default 10
+    cfg->enigma_bombe = false;
 }
 
 
@@ -438,6 +480,7 @@ static bool cipher_type_plausible(int type, const char *cipher) {
 
     bool digit_family = (type == POLLUX || type == MORBIT ||
                          type == STRADDLING_CHECKERBOARD || type == MONOME_DINOME ||
+                         type == TRIDIGITAL || type == GRANDPRE || type == SYLLABARY ||
                          type == NIHILIST_SUB || type == NIHILIST_SUB_NC ||
                          type == NIHILIST_SUB_M100);
 
@@ -476,6 +519,13 @@ static int run_all_types(int argc, char **argv) {
     char sample[MAX_CIPHER_LENGTH];
     read_cipher_sample(argc, argv, sample, sizeof sample);
 
+    // The Twin types need a SECOND ciphertext (-cipher2); without one they cannot run, so
+    // skip them in the sweep rather than forking a child that only prints an error.
+    bool have_cipher2 = false;
+    for (int i = 1; i < argc; i++)
+        if (strcmp(argv[i], "-cipher2") == 0 || strcmp(argv[i], "-twincipher") == 0 ||
+            strcmp(argv[i], "-cipher-b") == 0) { have_cipher2 = true; break; }
+
     printf("\n=== -type all: sweeping every plausible cipher type ===\n");
     if (sample[0])
         printf("Ciphertext sample (%zu chars): %.72s%s\n",
@@ -494,6 +544,12 @@ static int run_all_types(int argc, char **argv) {
     for (int t = 0; t < N_CIPHER_TYPES; t++) {
         const char *name = cipher_type_name(t);
         if (!name) continue;   // not a real type code
+
+        if ((t == TWIN_BIFID || t == TWIN_TRIFID) && !have_cipher2) {
+            printf("  SKIP  type %2d  %-38s (needs a second ciphertext: -cipher2 <file>)\n", t, name);
+            n_skipped++;
+            continue;
+        }
 
         if (!cipher_type_plausible(t, sample)) {
             printf("  SKIP  type %2d  %-38s (ciphertext not of this form)\n", t, name);
@@ -602,7 +658,9 @@ static void print_help(const char *prog) {
 "                          -multiline). Mutually exclusive with -batch.\n"
 "  -batch <file>           Solve every ciphertext line in the file in turn.\n"
 "  -ngramsize <n>          N-gram order for scoring (typically 4, or 5 with -logprob).\n"
-"  -ngramfile <file>       N-gram frequency table (e.g. english_quadgrams.txt).\n"
+"  -ngramfile <file>       N-gram frequency table (e.g. ngram_data/english/english_quadgrams.txt).\n"
+"                          A dense 8-bit .ngbin table (see -writengrambin) is auto-\n"
+"                          detected by its magic and mmap'd (implies -logprob).\n"
 "\n"
 "READABILITY (-spaces)\n"
 "  -spaces                 After the best plaintext for each report is found, run an\n"
@@ -644,6 +702,10 @@ static void print_help(const char *prog) {
 "                          and square ciphers). Alias -azdecrypt.              [off]\n"
 "  -reversengrams          Reversal-invariant table (each n-gram and its reverse\n"
 "                          share the max weight). Alias -revngrams.            [off]\n"
+"  -writengrambin <file>   Tool mode: load -ngramfile with this -type's alphabet,\n"
+"                          -ngramsize and -logprob, quantize it to a dense 8-bit\n"
+"                          .ngbin at <file>, and exit (no cipher needed). The table\n"
+"                          is alphabet-specific -- pass the same -type you will solve.\n"
 "  -weightngram <f>        N-gram score weight.                              [12.0]\n"
 "  -weightcrib <f>         Crib-match score weight.                          [36.0]\n"
 "  -weightcribdrag <f>     Crib-dragging reward weight (-cribdrag).          [36.0]\n"
@@ -709,6 +771,8 @@ static void print_help(const char *prog) {
 "  -cribanchored           Use the crib as a structural column-order constraint.[off]\n"
 "  -tile <h> <w>           Sub-grid tile shape for transtile.                [2 2]\n"
 "  -depth <1|2>            Period-column: max composed stages searched.         [2]\n"
+"  -primer <digits>        Sequence Transposition: the transmitted chain-addition primer\n"
+"                          (e.g. 69315). Omit to recover it by a blind pre-pass.  [blind]\n"
 "  -maxgaps <n>            Period-column-space: max inserted gap cells.         [4]\n"
 "  -maxdels <n>            Period-column-space: max deleted observed cells.     [2]\n"
 "  -transperoffset <o> <p> Post-decrypt periodic-decimation transposition stage.\n"
@@ -726,10 +790,10 @@ static void print_help(const char *prog) {
     printf(
 "\n"
 "EXAMPLES\n"
-"  colossus -type q3 -cipher cipher.txt -ngramsize 4 -ngramfile english_quadgrams.txt\n"
-"  colossus -type playfair -cipher pf.txt -ngramsize 5 -ngramfile english_quintgrams.txt -logprob\n"
-"  colossus -type transcol -cipher ct.txt -ngramsize 4 -ngramfile english_quadgrams.txt -mincols 2 -maxcols 15\n"
-"  colossus -type all -cipher ct.txt -ngramsize 4 -ngramfile english_quadgrams.txt\n"
+"  colossus -type q3 -cipher cipher.txt -ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt\n"
+"  colossus -type playfair -cipher pf.txt -ngramsize 5 -ngramfile ngram_data/english/english_quintgrams.txt -logprob\n"
+"  colossus -type transcol -cipher ct.txt -ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt -mincols 2 -maxcols 15\n"
+"  colossus -type all -cipher ct.txt -ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt\n"
 "\n"
 "See README.md and CLAUDE.md for the full writeup and per-type notes.\n"
 "\n");
@@ -740,7 +804,10 @@ int main(int argc, char **argv) {
     SharedData shared;
     int i;
     char single_ciphertext_buffer[MAX_CIPHER_LENGTH];
+    char twin_ciphertext_buffer[MAX_CIPHER_LENGTH];   // -cipher2 (Twin Bifid/Trifid second message)
     char cribtext[MAX_CIPHER_LENGTH];
+    char writebin_path[MAX_FILENAME_LEN] = "";  // -writengrambin: dump the loaded table then exit
+    bool do_writebin = false;
 
     printf("\n\nCOLOSSUS Cipher Solver\n\n");
     printf("Written by Sam Blake, started 14 July 2023.\n\n");
@@ -835,6 +902,14 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-ngramfile") == 0) {
             strcpy(cfg.ngram_file, argv[++i]);
             printf("-ngramfile %s\n", cfg.ngram_file);
+        } else if (strcmp(argv[i], "-writengrambin") == 0) {
+            // Tool mode: after the requested -ngramfile is loaded (with the -type's
+            // alphabet, -ngramsize and -logprob applied exactly as a real solve would),
+            // quantize it to a dense 8-bit .ngbin at this path and exit. No cipher needed.
+            strncpy(writebin_path, argv[++i], MAX_FILENAME_LEN - 1);
+            writebin_path[MAX_FILENAME_LEN - 1] = '\0';
+            do_writebin = true;
+            printf("-writengrambin %s\n", writebin_path);
         } else if (strcmp(argv[i], "-spaces") == 0) {
             cfg.spaces_present = true;
             printf("-spaces\n");
@@ -849,6 +924,85 @@ int main(int argc, char **argv) {
             strncpy(cfg.check_solution_file, argv[++i], MAX_FILENAME_LEN - 1);
             cfg.check_solution_file[MAX_FILENAME_LEN - 1] = '\0';
             printf("-check-solution-file %s\n", cfg.check_solution_file);
+        } else if (strcmp(argv[i], "-runningkeyfile") == 0) {
+            // Running Key: a file holding the KNOWN running-key TEXT (letters only, at
+            // least as long as the ciphertext) -- e.g. drag K1/K2/K3 as a running key.
+            cfg.runningkey_present = true;
+            strncpy(cfg.runningkey_file, argv[++i], MAX_FILENAME_LEN - 1);
+            cfg.runningkey_file[MAX_FILENAME_LEN - 1] = '\0';
+            printf("-runningkeyfile %s\n", cfg.runningkey_file);
+        } else if (strcmp(argv[i], "-indepkey") == 0) {
+            // Running Key: general blind mode (key is an unrelated English text), vs the
+            // ACA default where the plaintext's first half is its own running key.
+            cfg.runningkey_independent = true;
+            printf("-indepkey\n");
+        } else if (strcmp(argv[i], "-cipher2") == 0 || strcmp(argv[i], "-twincipher") == 0 ||
+                   strcmp(argv[i], "-cipher-b") == 0) {
+            // Twin Bifid / Twin Trifid: the SECOND ciphertext file (shares the first's key
+            // square/cube at a different period). Stored as a path here; read in main() into
+            // twin_ciphertext_buffer and pointed at by cfg.twincipher_str before solve_cipher.
+            cfg.twincipher_present = true;
+            strncpy(cfg.twincipher_file, argv[++i], MAX_FILENAME_LEN - 1);
+            cfg.twincipher_file[MAX_FILENAME_LEN - 1] = '\0';
+            printf("-cipher2 %s\n", cfg.twincipher_file);
+        } else if (strcmp(argv[i], "-baconmode") == 0) {
+            // Baconian: which cover unit is one a/b symbol -- letter | word | auto (default).
+            const char *m = argv[++i];
+            if (strcmp(m, "letter") == 0)      cfg.bacon_mode = BAC_MODE_LETTER;
+            else if (strcmp(m, "word") == 0)   cfg.bacon_mode = BAC_MODE_WORD;
+            else if (strcmp(m, "auto") == 0)   cfg.bacon_mode = BAC_MODE_AUTO;
+            else { printf("ERROR: -baconmode must be letter, word, or auto (got \"%s\")\n", m); return 0; }
+            printf("-baconmode %s\n", m);
+        } else if (strcmp(argv[i], "-model") == 0) {
+            // Enigma machine model: m3 (3-rotor, default) or m4 (naval 4-rotor).
+            const char *m = argv[++i];
+            if (!strcmp(m, "m3") || !strcmp(m, "M3") || !strcmp(m, "3")) cfg.enigma_model = 3;
+            else if (!strcmp(m, "m4") || !strcmp(m, "M4") || !strcmp(m, "4")) cfg.enigma_model = 4;
+            else { printf("ERROR: -model must be m3 or m4 (got \"%s\")\n", m); return 0; }
+            printf("-model M%d\n", cfg.enigma_model);
+        } else if (strcmp(argv[i], "-reflector") == 0) {
+            int r = enigma_reflector_from_name(argv[++i]);
+            if (r < 0) { printf("ERROR: -reflector must be B, C, Bthin, or Cthin (got \"%s\")\n", argv[i]); return 0; }
+            cfg.enigma_reflector = r;
+            printf("-reflector %s\n", enigma_reflector_name(r));
+        } else if (strcmp(argv[i], "-greek") == 0) {
+            int g = enigma_rotor_from_name(argv[++i]);
+            if (g != ENIGMA_BETA && g != ENIGMA_GAMMA) { printf("ERROR: -greek must be Beta or Gamma (got \"%s\")\n", argv[i]); return 0; }
+            cfg.enigma_greek = g;
+            printf("-greek %s\n", enigma_rotor_name(g));
+        } else if (strcmp(argv[i], "-rotors") == 0) {
+            // Enigma wheel order: the 3 STEPPING wheels left->right, e.g. -rotors "II I III".
+            int ids[4]; int n = enigma_parse_rotors(argv[++i], ids, 4);
+            if (n != 3) { printf("ERROR: -rotors needs 3 stepping-wheel names, e.g. \"II I III\"\n"); return 0; }
+            for (int j = 0; j < 3; j++) cfg.enigma_rotors[j] = ids[j];
+            cfg.enigma_rotors_present = true;
+            printf("-rotors %s %s %s\n", enigma_rotor_name(ids[0]), enigma_rotor_name(ids[1]), enigma_rotor_name(ids[2]));
+        } else if (strcmp(argv[i], "-ring") == 0 || strcmp(argv[i], "-rings") == 0) {
+            // Ring settings for the 3 stepping wheels: letters "A W D" or 1-based "1 23 4".
+            if (enigma_parse_settings(argv[++i], cfg.enigma_ring, 3) != 3) {
+                printf("ERROR: -ring needs 3 settings, e.g. \"A W D\" or \"1 23 4\"\n"); return 0; }
+            cfg.enigma_ring_present = true;
+            printf("-ring %c %c %c\n", 'A' + cfg.enigma_ring[0], 'A' + cfg.enigma_ring[1], 'A' + cfg.enigma_ring[2]);
+        } else if (strcmp(argv[i], "-startpos") == 0 || strcmp(argv[i], "-pos") == 0) {
+            if (enigma_parse_settings(argv[++i], cfg.enigma_pos, 3) != 3) {
+                printf("ERROR: -startpos needs 3 settings, e.g. \"B G I\"\n"); return 0; }
+            cfg.enigma_pos_present = true;
+            printf("-startpos %c %c %c\n", 'A' + cfg.enigma_pos[0], 'A' + cfg.enigma_pos[1], 'A' + cfg.enigma_pos[2]);
+        } else if (strcmp(argv[i], "-plugboard") == 0 || strcmp(argv[i], "-plugs") == 0 ||
+                   strcmp(argv[i], "-stecker") == 0) {
+            int n = enigma_parse_plugs(argv[++i], cfg.enigma_plug);
+            if (n < 0) { printf("ERROR: -plugboard must be letter pairs, e.g. \"EZ RW MV\"\n"); return 0; }
+            cfg.enigma_plug_present = true;
+            printf("-plugboard %d pair(s)\n", n);
+        } else if (strcmp(argv[i], "-ntopk") == 0) {
+            cfg.enigma_ntopk = atoi(argv[++i]);
+            printf("-ntopk %d\n", cfg.enigma_ntopk);
+        } else if (strcmp(argv[i], "-maxplugs") == 0) {
+            cfg.enigma_maxplugs = atoi(argv[++i]);
+            printf("-maxplugs %d\n", cfg.enigma_maxplugs);
+        } else if (strcmp(argv[i], "-bombe") == 0) {
+            cfg.enigma_bombe = true;
+            printf("-bombe\n");
         } else if (strcmp(argv[i], "-excludeletter") == 0) {
             // Drop one (or more) letters from the alphabet, shrinking it to an
             // N<26 letter alphabet with mod-N arithmetic. E.g. -excludeletter P
@@ -908,6 +1062,23 @@ int main(int argc, char **argv) {
             cfg.cycleword_len = atoi(argv[++i]);
             cfg.max_cycleword_len = max(cfg.max_cycleword_len, 1 + cfg.cycleword_len);
             printf("-cyclewordlen %d\n", cfg.cycleword_len);
+        } else if (strcmp(argv[i], "-cyclewordlens") == 0) {
+            // Comma-separated component periods of a composed multi-Quagmire (QUAG_TRANS),
+            // e.g. -cyclewordlens 5,9 for Q(5)Q(9). Effective period = their lcm.
+            char *spec = argv[++i], *tok = strtok(spec, ",");
+            int eff = 1; cfg.n_cycleword_lens = 0;
+            while (tok && cfg.n_cycleword_lens < 8) {
+                int L = atoi(tok);
+                if (L > 0) {
+                    cfg.cycleword_lens[cfg.n_cycleword_lens++] = L;
+                    eff = eff / gcd(eff, L) * L;      // lcm
+                }
+                tok = strtok(NULL, ",");
+            }
+            cfg.cycleword_len = eff;
+            cfg.cycleword_len_present = true;
+            cfg.max_cycleword_len = max(cfg.max_cycleword_len, 1 + eff);
+            printf("-cyclewordlens (%d components, effective period %d)\n", cfg.n_cycleword_lens, eff);
         } else if (strcmp(argv[i], "-nsigmathreshold") == 0) {
             cfg.n_sigma_threshold = atof(argv[++i]);
             printf("-nsigmathreshold %.4f\n", cfg.n_sigma_threshold);
@@ -1137,9 +1308,15 @@ int main(int argc, char **argv) {
             printf("-maxdels %d\n", cfg.max_dels);
         } else if (strcmp(argv[i], "-period") == 0) {
             // Bifid/Trifid: pin the fractionation period (block size) vs estimating it.
+            // For Twin Bifid/Trifid this pins the FIRST message's period (see -period2).
             cfg.period_present = true;
             cfg.period = atoi(argv[++i]);
             printf("-period %d\n", cfg.period);
+        } else if (strcmp(argv[i], "-period2") == 0) {
+            // Twin Bifid/Trifid: pin the SECOND message's period (block size) vs estimating it.
+            cfg.period2_present = true;
+            cfg.period2 = atoi(argv[++i]);
+            printf("-period2 %d\n", cfg.period2);
         } else if (strcmp(argv[i], "-maxperiod") == 0) {
             // Bifid/Trifid: largest period the IoC estimator scans (default min(20, len/2)).
             cfg.max_period = atoi(argv[++i]);
@@ -1184,6 +1361,15 @@ int main(int argc, char **argv) {
             cfg.startkey_present = true;
             cfg.startkey = atoi(argv[++i]);
             printf("-startkey %d\n", cfg.startkey);
+        } else if (strcmp(argv[i], "-primer") == 0) {
+            // Sequence Transposition: the transmitted chain-addition primer, as digits (e.g.
+            // 69315). When given the solver skips the blind primer pre-pass. Length sets P.
+            const char *s = argv[++i];
+            int P = 0;
+            for (int j = 0; s[j] && P < SEQ_TRANS_MAX_PRIMER; j++)
+                if (s[j] >= '0' && s[j] <= '9') cfg.seq_primer[P++] = s[j] - '0';
+            cfg.seq_primer_len = P;
+            printf("-primer %.*s (P=%d)\n", P, s, P);
         } else {
             printf("\n\nERROR: unknown command line arg: \'%s\'\n\n", argv[i]);
             return 0;
@@ -1272,8 +1458,12 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Seriated Playfair cipher (digraphic Playfair over vertical pairs of a two-row seriated layout).\n\n");
     } else if (cfg.cipher_type == BIFID) {
         printf("\nAttacking a Bifid cipher (fractionation over a keyed Polybius square).\n\n");
+    } else if (cfg.cipher_type == TWIN_BIFID) {
+        printf("\nAttacking a Twin Bifid cipher (two Bifid messages sharing one keyed square at different periods).\n\n");
     } else if (cfg.cipher_type == TRIFID) {
         printf("\nAttacking a Trifid cipher (fractionation over a keyed 3x3x3 cube).\n\n");
+    } else if (cfg.cipher_type == TWIN_TRIFID) {
+        printf("\nAttacking a Twin Trifid cipher (two Trifid messages sharing one keyed cube at different periods).\n\n");
     } else if (cfg.cipher_type == HILL) {
         printf("\nAttacking a Hill cipher (polygraphic substitution by a k x k matrix mod 26).\n\n");
     } else if (cfg.cipher_type == PHILLIPS || cfg.cipher_type == PHILLIPS_C ||
@@ -1344,6 +1534,32 @@ int main(int argc, char **argv) {
         printf("\nAttacking an Aristocrat cipher (simple monoalphabetic substitution; word divisions preserved).\n\n");
     } else if (cfg.cipher_type == PATRISTOCRAT) {
         printf("\nAttacking a Patristocrat cipher (simple monoalphabetic substitution; no word divisions, 5-letter groups).\n\n");
+    } else if (cfg.cipher_type == TRIDIGITAL) {
+        printf("\nAttacking a Tridigital cipher (keyed 3x10 block; digit-per-letter with a word-separator digit, ambiguous decode).\n\n");
+    } else if (cfg.cipher_type == CHECKERBOARD) {
+        printf("\nAttacking a Checkerboard cipher (keyed 5x5 square; plaintext letter -> row/col label digraph; simple/complex auto-detected).\n\n");
+    } else if (cfg.cipher_type == SEQUENCE_TRANSPOSITION) {
+        printf("\nAttacking a Sequence Transposition cipher (chain-addition digit sequence buckets each letter into 1 of 10 columns; keyword sets the column read order).\n\n");
+    } else if (cfg.cipher_type == GRANDPRE) {
+        printf("\nAttacking a Grandpre cipher (N x N word square; each plaintext letter -> a 2-digit (row,col) code of any cell holding it; homophonic over numeric codes).\n\n");
+    } else if (cfg.cipher_type == SYLLABARY) {
+        printf("\nAttacking a Syllabary cipher (10x10 square of 100 fixed syllabary tokens; each plaintext element -> a 2-digit (row,col) code; substitution over 100 codes -> known 1-3 letter tokens).\n\n");
+    } else if (cfg.cipher_type == KEY_PHRASE) {
+        printf("\nAttacking a Key Phrase cipher (a 26-letter phrase IS the cipher alphabet; several plaintext letters share a ciphertext letter, so decode is ambiguous and context-resolved).\n\n");
+    } else if (cfg.cipher_type == AFFINE) {
+        printf("\nAttacking an Affine cipher (monoalphabetic C = a*P + b mod 26, gcd(a,26)=1; deterministic-exhaustive 312-key search).\n\n");
+    } else if (cfg.cipher_type == QUAG_TRANS) {
+        printf("\nAttacking a layered Quagmire III o columnar transposition (Paradigm): strip the outer Quagmire by monogram, solve the inner transposition by n-gram, refine the cycleword through it.\n\n");
+    } else if (cfg.cipher_type == HILL_QUAG) {
+        printf("\nAttacking a layered Hill o Quagmire III (Paradigm): recover the Hill matrix by the inner Quagmire's period-P columnar statistic (key-independent), then strip the Hill and solve the Quagmire.\n\n");
+    } else if (cfg.cipher_type == RUNNING_KEY) {
+        printf("\nAttacking a Running Key cipher (Vigenere-family with a running-TEXT key; self-keyed / independent blind scores both streams as English, or known-key with -runningkeyfile).\n\n");
+    } else if (cfg.cipher_type == BACONIAN) {
+        printf("\nAttacking a Baconian cipher (biliteral 5-symbol substitution concealed in cover text; search the a/b classifier over per-letter/per-word grouping, decode via the fixed 24-letter table).\n\n");
+    } else if (cfg.cipher_type == COMPRESSOCRAT) {
+        printf("\nAttacking a Compressocrat cipher (fractionation twin of Fractionated Morse: a fixed {1,2,3} Huffman code + a keyed 26-alphabet mapping trigraphs to ciphertext letters; keyed-alphabet anneal with a validity reward).\n\n");
+    } else if (cfg.cipher_type == ENIGMA) {
+        printf("\nAttacking an Enigma cipher (rotor machine; ciphertext-only IoC/ring/plugboard attack after Gillogly, a known-key decrypt when pinned, or the Turing-Welchman Bombe with -bombe + a crib).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -1360,7 +1576,7 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    if (!cfg.cipher_present && !cfg.batch_present) {
+    if (!cfg.cipher_present && !cfg.batch_present && !do_writebin) {
         printf("\n\nERROR: No cipher input specified. Use -cipher or -batch.\n\n");
         return 0;
     }
@@ -1416,6 +1632,15 @@ int main(int argc, char **argv) {
             g_alpha, g_idx_to_char_arr);
     }
 
+    // Twin Bifid runs on the same 5x5 (25-letter, J->I) square as Bifid (one shared square
+    // decrypting both messages). Force it here -- before load_ngrams -- unless the user
+    // already shrank the alphabet.
+    if (cfg.cipher_type == TWIN_BIFID && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet("J");
+        printf("-type twin-bifid: alphabet forced to %d letters (J->I): %s\n",
+            g_alpha, g_idx_to_char_arr);
+    }
+
     // Phillips runs on the same 5x5 (25-letter, J->I) grid as Playfair/Bifid. Force it
     // here -- before load_ngrams -- unless the user already shrank the alphabet.
     if ((cfg.cipher_type == PHILLIPS || cfg.cipher_type == PHILLIPS_C ||
@@ -1443,6 +1668,14 @@ int main(int argc, char **argv) {
     if (cfg.cipher_type == TRIFID && g_alpha == DEFAULT_ALPHABET_SIZE) {
         init_alphabet_trifid();
         printf("-type trifid: alphabet forced to %d symbols (A..Z + '%c'): %s\n",
+            g_alpha, TRIFID_EXTRA_CHAR, g_idx_to_char_arr);
+    }
+
+    // Twin Trifid runs on the same 27-symbol (A..Z + '+') cube as Trifid (one shared cube
+    // decrypting both messages). Force it here -- before load_ngrams -- unless changed.
+    if (cfg.cipher_type == TWIN_TRIFID && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet_trifid();
+        printf("-type twin-trifid: alphabet forced to %d symbols (A..Z + '%c'): %s\n",
             g_alpha, TRIFID_EXTRA_CHAR, g_idx_to_char_arr);
     }
 
@@ -1477,6 +1710,14 @@ int main(int argc, char **argv) {
          cfg.cipher_type == NIHILIST_SUB_M100) && g_alpha == DEFAULT_ALPHABET_SIZE) {
         init_alphabet("J");
         printf("-type nihilist-sub: alphabet forced to %d letters (J->I): %s\n",
+            g_alpha, g_idx_to_char_arr);
+    }
+
+    // Checkerboard runs on the same 5x5 (25-letter, J->I) square as Playfair/Bifid. Force it
+    // here -- before load_ngrams -- unless the user already shrank the alphabet.
+    if (cfg.cipher_type == CHECKERBOARD && g_alpha == DEFAULT_ALPHABET_SIZE) {
+        init_alphabet("J");
+        printf("-type checkerboard: alphabet forced to %d letters (J->I): %s\n",
             g_alpha, g_idx_to_char_arr);
     }
 
@@ -1516,6 +1757,14 @@ int main(int argc, char **argv) {
     // --- Resource Loading ---
 
     shared.ngram_data = load_ngrams(cfg.ngram_file, cfg.ngram_size, cfg.verbose);
+
+    // -writengrambin tool mode: dump the just-loaded table as a dense 8-bit .ngbin and
+    // exit before touching the ciphertext. It runs with the exact per-type alphabet,
+    // -ngramsize and -logprob table a real solve would build, so the compressed table is
+    // correct for that cipher type (a Bifid table is 25-letter J->I, a Vigenere table 26,
+    // etc.). write_ngram_bin refuses a non-logprob or already-compressed input table.
+    if (do_writebin)
+        return write_ngram_bin(writebin_path, shared.ngram_data, cfg.ngram_size);
 
     // -spaces: load the space-inclusive n-gram table once, up front (not per candidate), so
     // every solver's final report can call print_spaces_line() for free. g_spaces_table stays
@@ -1656,6 +1905,29 @@ int main(int argc, char **argv) {
 
         if (cfg.verbose) printf("ciphertext = \n\'%s\'\n\n", single_ciphertext_buffer);
 
+        // Twin Bifid / Twin Trifid: read the SECOND ciphertext (-cipher2) into its own
+        // buffer, first line only, letters only carried through to solve_twin_* (which
+        // decodes it with decode_cipher). Point cfg.twincipher_str at it before the solve.
+        if (cfg.twincipher_present) {
+            if (!file_exists(cfg.twincipher_file)) {
+                printf("\nERROR: missing second cipher file '%s' (-cipher2)\n", cfg.twincipher_file);
+                return 0;
+            }
+            FILE *fp_c2 = fopen(cfg.twincipher_file, "r");
+            int c2i = 0, c2ch;
+            while ((c2ch = fgetc(fp_c2)) != EOF && (cfg.multiline || c2ch != '\n')
+                   && c2i < MAX_CIPHER_LENGTH - 1) {
+                if (c2ch == '\r' || c2ch == '\n') continue;
+                twin_ciphertext_buffer[c2i++] = (char) c2ch;
+            }
+            twin_ciphertext_buffer[c2i] = '\0';
+            while (c2i > 0 && isspace((unsigned char) twin_ciphertext_buffer[c2i - 1]))
+                twin_ciphertext_buffer[--c2i] = '\0';
+            fclose(fp_c2);
+            cfg.twincipher_str = twin_ciphertext_buffer;
+            if (cfg.verbose) printf("ciphertext 2 = \n\'%s\'\n\n", twin_ciphertext_buffer);
+        }
+
         solve_cipher(single_ciphertext_buffer, cribtext, &cfg, &shared, NULL);
     }
 
@@ -1783,6 +2055,20 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
         return ;
     }
+    // --- LAYERED (Paradigm) CIPHERS ---
+    // Outer substitution stage over an inner transposition/substitution stage;
+    // solved by peeling the outer stage via a key-independent statistic, then
+    // the inner stage by n-gram (see layered_solver.c / hill_quag_solver.c).
+    if (cfg->cipher_type == QUAG_TRANS) {
+        solve_quag_trans(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
+        return ;
+    }
+    if (cfg->cipher_type == HILL_QUAG) {
+        solve_hill_quag(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs);
+        return ;
+    }
     if (cfg->cipher_type == POLLUX) {
         solve_pollux(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
@@ -1804,6 +2090,40 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
+    if (cfg->cipher_type == TRIDIGITAL) {
+        // Parses the digit stream from ciphertext_str; ambiguous 3-to-1 decode via inner Viterbi.
+        solve_tridigital(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == CHECKERBOARD) {
+        // Keyed 5x5 square; plaintext letter -> (row label, col label) digraph. Auto-detects
+        // simple/complex per axis; searches the square (+ label pairing for the complex case).
+        solve_checkerboard(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == SEQUENCE_TRANSPOSITION) {
+        // Chain-addition digit sequence buckets each letter into 1 of 10 columns; a keyword sets
+        // the column read order (a transposition). Primer given (-primer) or blind pre-pass.
+        solve_sequence_transposition(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == GRANDPRE) {
+        // Parses the digit stream from ciphertext_str into 2-digit codes; homophonic map
+        // (code -> letter) over the N x N word square, searched on the homophonic fast path.
+        solve_grandpre(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == SYLLABARY) {
+        // Parses the digit stream into 2-digit codes; composite code -> token bijection over the
+        // fixed 100-token syllabary alphabet, annealed with a tiled length-fair n-gram score.
+        solve_syllabary(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
     if (cfg->cipher_type == RAGBABY) {
         // Parses the spaced ciphertext_str directly (word divisions drive the per-letter numbering).
         solve_ragbaby(ciphertext_str, cribtext_str, cfg, shared,
@@ -1814,6 +2134,20 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         // Simple monoalphabetic substitution; word divisions carried through cipher_indices as
         // sentinels (Aristocrat reconstructs them; Patristocrat regroups in 5s).
         solve_aristocrat(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == KEY_PHRASE) {
+        // 26-letter phrase as the cipher alphabet -> ambiguous many-to-one decode. Searches a
+        // partition of a..z among the observed ct letters with an inner beam-Viterbi decode;
+        // word divisions carried through cipher_indices as sentinels (restored in the report).
+        solve_keyphrase(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+    if (cfg->cipher_type == AFFINE) {
+        // Monoalphabetic C = a*P + b mod 26; deterministic-exhaustive 12x26 = 312-key search.
+        solve_affine(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
@@ -1889,8 +2223,20 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         return ;
     }
 
+    if (cfg->cipher_type == TWIN_BIFID) {
+        solve_twin_bifid(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
     if (cfg->cipher_type == TRIFID) {
         solve_trifid(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == TWIN_TRIFID) {
+        solve_twin_trifid(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }
@@ -2005,6 +2351,42 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
 
     if (cfg->cipher_type == FRAC_MORSE) {
         solve_fracmorse(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == RUNNING_KEY) {
+        // Vigenere-family with a running-TEXT key (no period). Self-keyed (ACA) / independent
+        // blind search scores BOTH streams as English (beam warm start + anneal over the key
+        // stream); -runningkeyfile does a known-key deterministic decrypt. Families swept.
+        solve_running_key(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == BACONIAN) {
+        // Biliteral 5-symbol substitution concealed in cover text (space-significant:
+        // per-word grouping needs word boundaries, so solve_baconian re-parses
+        // ciphertext_str). Searches the a/b classifier; decode via the fixed 24-letter table.
+        solve_baconian(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == COMPRESSOCRAT) {
+        // Fractionation twin of Fractionated Morse: a FIXED {1,2,3} Huffman code + a keyed
+        // 26-alphabet mapping trigraphs (333 excluded) to ciphertext letters. Keyed-alphabet
+        // anneal over sigma; length-changing decode tiled to C with a validity reward.
+        solve_compressocrat(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == ENIGMA) {
+        // Rotor machine. Ciphertext-only IoC/ring/plugboard attack (Gillogly), a
+        // deterministic known-key decrypt when pinned, or the Turing-Welchman Bombe
+        // (-bombe + crib). Heterogeneous key => its own solver, not the polyalpha pipeline.
+        solve_enigma(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

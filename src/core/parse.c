@@ -215,6 +215,14 @@ int parse_cipher_type(const char *arg) {
     // CM Bifid (Conjugated Matrix Bifid: Bifid fractionation over two keyed squares; period swept).
     if (str_eq(arg, "cm-bifid") || str_eq(arg, "cmbifid") || str_eq(arg, "cmb")) return CM_BIFID;
 
+    // Twin Bifid / Twin Trifid (ACA): two messages sharing one keyed square/cube at two
+    // different periods; the second ciphertext is supplied with -cipher2.
+    if (str_eq(arg, "twin-bifid") || str_eq(arg, "twinbifid") || str_eq(arg, "tbf")) return TWIN_BIFID;
+    if (str_eq(arg, "twin-trifid") || str_eq(arg, "twintrifid") || str_eq(arg, "ttf")) return TWIN_TRIFID;
+
+    // Enigma rotor machine (ciphertext-only IoC/plugboard attack, or -bombe crib attack).
+    if (str_eq(arg, "enigma") || str_eq(arg, "enig")) return ENIGMA;
+
     // Progressive Key (periodic base cipher + per-group constant key drift). Check the
     // variant/beaufort aliases before the bare progkey so a substring never shadows them.
     if (str_eq(arg, "progkey-var") || str_eq(arg, "progkey-v") || str_eq(arg, "pkv"))
@@ -284,6 +292,56 @@ int parse_cipher_type(const char *arg) {
     if (str_eq(arg, "patristocrat") || str_eq(arg, "patrist") || str_eq(arg, "patri") ||
         str_eq(arg, "pat"))
         return PATRISTOCRAT;
+
+    // Tridigital (keyed 3x10 block; digit-per-letter with a word-separator digit).
+    if (str_eq(arg, "tridigital") || str_eq(arg, "tridigit") || str_eq(arg, "tridig") ||
+        str_eq(arg, "td"))
+        return TRIDIGITAL;
+
+    // Checkerboard (keyed 5x5 square; plaintext letter -> row/col label digraph).
+    if (str_eq(arg, "checkerboard") || str_eq(arg, "checker") || str_eq(arg, "cb"))
+        return CHECKERBOARD;
+
+    if (str_eq(arg, "sequence-transposition") || str_eq(arg, "sequencetransposition") ||
+        str_eq(arg, "seqtrans") || str_eq(arg, "seqtransposition") || str_eq(arg, "st"))
+        return SEQUENCE_TRANSPOSITION;
+
+    // Grandpre (N x N word square; plaintext letter -> a 2-digit (row,col) code, homophonic).
+    if (str_eq(arg, "grandpre") || str_eq(arg, "grandpré") || str_eq(arg, "gp"))
+        return GRANDPRE;
+
+    // Syllabary (10x10 square of 100 syllabary tokens; plaintext element -> a 2-digit code).
+    if (str_eq(arg, "syllabary") || str_eq(arg, "syll") || str_eq(arg, "sy"))
+        return SYLLABARY;
+
+    // Key Phrase (a 26-letter phrase IS the cipher alphabet; ambiguous many-to-one decode).
+    if (str_eq(arg, "keyphrase") || str_eq(arg, "key-phrase") || str_eq(arg, "kp"))
+        return KEY_PHRASE;
+
+    // Affine (monoalphabetic C = a*P + b mod 26; 312-key exhaustive).
+    if (str_eq(arg, "affine") || str_eq(arg, "af"))
+        return AFFINE;
+
+    // Layered (Paradigm): outer Quagmire III o inner columnar transposition.
+    if (str_eq(arg, "quagtrans") || str_eq(arg, "qtrans") || str_eq(arg, "quag-trans"))
+        return QUAG_TRANS;
+
+    // Layered (Paradigm): outer Hill o inner Quagmire III.
+    if (str_eq(arg, "hillquag") || str_eq(arg, "hill-quag") || str_eq(arg, "hq"))
+        return HILL_QUAG;
+
+    // Running Key (Vigenere-family with a running-TEXT key; no period).
+    if (str_eq(arg, "running-key") || str_eq(arg, "runningkey") ||
+        str_eq(arg, "running") || str_eq(arg, "rk"))
+        return RUNNING_KEY;
+
+    // Baconian (biliteral 5-symbol substitution concealed in cover text).
+    if (str_eq(arg, "baconian") || str_eq(arg, "bacon") || str_eq(arg, "bac"))
+        return BACONIAN;
+
+    // Compressocrat (fractionation twin of Fractionated Morse; {1,2,3} Huffman code + keyed alphabet).
+    if (str_eq(arg, "compressocrat") || str_eq(arg, "compress") || str_eq(arg, "comp"))
+        return COMPRESSOCRAT;
 
     // Return -1 to indicate invalid/unknown type.
     return -1;
@@ -360,6 +418,8 @@ const char *cipher_type_name(int type) {
         case SERIATED_PLAYFAIR:       return "Seriated Playfair";
         case DIGRAFID:                return "Digrafid";
         case CM_BIFID:                return "CM Bifid";
+        case TWIN_BIFID:              return "Twin Bifid";
+        case TWIN_TRIFID:             return "Twin Trifid";
         case TRI_SQUARE:              return "Tri-Square";
         case INTERRUPTED_KEY:         return "Interrupted Key (Vigenere)";
         case INTERRUPTED_KEY_VAR:     return "Interrupted Key (Variant)";
@@ -376,6 +436,19 @@ const char *cipher_type_name(int type) {
         case MONOME_DINOME:           return "Monome-Dinome";
         case ARISTOCRAT:              return "Aristocrat";
         case PATRISTOCRAT:            return "Patristocrat";
+        case TRIDIGITAL:              return "Tridigital";
+        case CHECKERBOARD:            return "Checkerboard";
+        case SEQUENCE_TRANSPOSITION:  return "Sequence Transposition";
+        case GRANDPRE:                return "Grandpre";
+        case SYLLABARY:               return "Syllabary";
+        case KEY_PHRASE:              return "Key Phrase";
+        case AFFINE:                  return "Affine";
+        case QUAG_TRANS:              return "Quagmire III o columnar transposition (layered)";
+        case HILL_QUAG:               return "Hill o Quagmire III (layered)";
+        case RUNNING_KEY:             return "Running Key";
+        case BACONIAN:                return "Baconian";
+        case COMPRESSOCRAT:           return "Compressocrat";
+        case ENIGMA:                  return "Enigma";
         default:                      return NULL;
     }
 }
@@ -453,6 +526,8 @@ const char *cipher_type_aliases(int type) {
         case SERIATED_PLAYFAIR:       return "seriated-playfair, seriatedplayfair, serpf, spf";
         case DIGRAFID:                return "digrafid, df, dgf";
         case CM_BIFID:                return "cm-bifid, cmbifid, cmb";
+        case TWIN_BIFID:              return "twin-bifid, twinbifid, tbf  (needs -cipher2)";
+        case TWIN_TRIFID:             return "twin-trifid, twintrifid, ttf  (needs -cipher2)";
         case TRI_SQUARE:              return "trisquare, tri-square, 3square, 3sq, trisq";
         case INTERRUPTED_KEY:         return "interrupted-key, interruptedkey, intkey, ik";
         case INTERRUPTED_KEY_VAR:     return "interrupted-key-var, intkey-var, ikv";
@@ -469,6 +544,19 @@ const char *cipher_type_aliases(int type) {
         case MONOME_DINOME:           return "monome-dinome, monome, mono-dinome, md";
         case ARISTOCRAT:              return "aristocrat, arist, aris";
         case PATRISTOCRAT:            return "patristocrat, patrist, patri, pat";
+        case TRIDIGITAL:              return "tridigital, tridigit, tridig, td";
+        case CHECKERBOARD:            return "checkerboard, checker, cb";
+        case SEQUENCE_TRANSPOSITION:  return "sequence-transposition, seqtrans, st";
+        case GRANDPRE:                return "grandpre, gp";
+        case SYLLABARY:               return "syllabary, syll, sy";
+        case KEY_PHRASE:              return "keyphrase, key-phrase, kp";
+        case AFFINE:                  return "affine, af";
+        case QUAG_TRANS:              return "quagtrans, qtrans, quag-trans";
+        case HILL_QUAG:               return "hillquag, hill-quag, hq";
+        case RUNNING_KEY:             return "running-key, runningkey, rk";
+        case BACONIAN:                return "baconian, bacon, bac";
+        case COMPRESSOCRAT:           return "compressocrat, compress, comp";
+        case ENIGMA:                  return "enigma, enig";
         default:                      return NULL;
     }
 }

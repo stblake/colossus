@@ -12,5 +12,5 @@ cd "$(dirname "$0")/../../.." || exit 1
 ./colossus -type vig \
   -cipher ciphers/tests/bugfixes/bug1_cipher.txt \
   -crib   ciphers/tests/bugfixes/bug1_crib.txt \
-  -ngramsize 4 -ngramfile english_quadgrams.txt \
+  -ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt \
   -nhillclimbs 300 -nrestarts 400

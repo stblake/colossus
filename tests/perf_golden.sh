@@ -9,11 +9,11 @@
 # Run from the repo root (the binary loads ngram/dict/cipher from cwd).
 set -u
 BIN=./colossus
-NG="-ngramsize 4 -ngramfile english_quadgrams.txt"
+NG="-ngramsize 4 -ngramfile ngram_data/english/english_quadgrams.txt"
 # Quintgram + -logprob row (below) exercises the memory-bound big-table scoring path and
 # the g_alpha==26 quintgram fast path (with its software prefetch) -- keep it here so any
 # scorer optimisation is verified bit-identical on that path, not just the quadgram one.
-QNG="-ngramsize 5 -ngramfile english_quintgrams.txt -logprob"
+QNG="-ngramsize 5 -ngramfile ngram_data/english/english_quintgrams.txt -logprob"
 run() { $BIN "$@" -seed 42 2>/dev/null | grep '^>>>'; }
 
 echo "Q3   :";    run -type quag3 -cipher ciphers/kryptos/K1.txt $NG -nhillclimbs 300 -nrestarts 60 -backtrackprob 0.15

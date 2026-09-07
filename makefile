@@ -14,19 +14,20 @@ CC=gcc-16 -Wall -O3 -funroll-loops -pthread
 # (#include "foo.h"), so the compiler finds every header via these -I paths
 # regardless of which subdirectory it lives in.
 SRC=src
-INCLUDES=-I$(SRC)/core -I$(SRC)/polyalphabetic -I$(SRC)/transposition -I$(SRC)/polygraphic -I$(SRC)/substitution
+INCLUDES=-I$(SRC)/core -I$(SRC)/polyalphabetic -I$(SRC)/transposition -I$(SRC)/polygraphic -I$(SRC)/substitution -I$(SRC)/machine
 
 CORE=$(SRC)/core
 POLY=$(SRC)/polyalphabetic
 TRANS=$(SRC)/transposition
 GRAPH=$(SRC)/polygraphic
 SUBST=$(SRC)/substitution
+MACHINE=$(SRC)/machine
 
 # Cipher primitives (decrypt math, shared by the solvers and the unit tests).
-PRIMITIVES=$(CORE)/utils.c $(CORE)/parse.c $(CORE)/dict.c $(CORE)/spaces.c $(TRANS)/transpositions.c $(TRANS)/period_column.c $(CORE)/perioc.c $(POLY)/quagmire.c $(POLY)/vigenere.c $(POLY)/gronsfeld.c $(POLY)/gromark.c $(POLY)/nicodemus.c $(POLY)/porta.c $(POLY)/beaufort.c $(POLY)/autokey.c $(CORE)/optimal_cycleword.c $(GRAPH)/playfair.c $(GRAPH)/bifid.c $(GRAPH)/trifid.c $(GRAPH)/hill.c $(GRAPH)/phillips.c $(GRAPH)/twosquare.c $(GRAPH)/foursquare.c $(GRAPH)/adfgvx.c $(GRAPH)/nihilist_sub.c $(GRAPH)/bazeries.c $(GRAPH)/portax.c $(POLY)/progkey.c $(GRAPH)/slidefair.c $(GRAPH)/seriated_playfair.c $(GRAPH)/digrafid.c $(GRAPH)/cm_bifid.c $(GRAPH)/trisquare.c $(POLY)/intkey.c $(POLY)/condi.c $(GRAPH)/fracmorse.c $(GRAPH)/pollux.c $(GRAPH)/morbit.c $(GRAPH)/straddling_checkerboard.c $(GRAPH)/monome_dinome.c $(SUBST)/ragbaby.c $(SUBST)/aristocrat.c
+PRIMITIVES=$(CORE)/utils.c $(CORE)/parse.c $(CORE)/dict.c $(CORE)/spaces.c $(TRANS)/transpositions.c $(TRANS)/period_column.c $(CORE)/perioc.c $(POLY)/quagmire.c $(POLY)/vigenere.c $(POLY)/gronsfeld.c $(POLY)/gromark.c $(POLY)/nicodemus.c $(POLY)/porta.c $(POLY)/beaufort.c $(POLY)/autokey.c $(CORE)/optimal_cycleword.c $(GRAPH)/playfair.c $(GRAPH)/bifid.c $(GRAPH)/trifid.c $(GRAPH)/hill.c $(GRAPH)/phillips.c $(GRAPH)/twosquare.c $(GRAPH)/foursquare.c $(GRAPH)/adfgvx.c $(GRAPH)/nihilist_sub.c $(GRAPH)/bazeries.c $(GRAPH)/portax.c $(POLY)/progkey.c $(GRAPH)/slidefair.c $(GRAPH)/seriated_playfair.c $(GRAPH)/digrafid.c $(GRAPH)/cm_bifid.c $(GRAPH)/twin_bifid.c $(GRAPH)/twin_trifid.c $(GRAPH)/trisquare.c $(POLY)/intkey.c $(POLY)/condi.c $(GRAPH)/fracmorse.c $(GRAPH)/pollux.c $(GRAPH)/morbit.c $(GRAPH)/straddling_checkerboard.c $(GRAPH)/monome_dinome.c $(GRAPH)/tridigital.c $(GRAPH)/checkerboard.c $(TRANS)/sequence_transposition.c $(GRAPH)/grandpre.c $(GRAPH)/syllabary.c $(SUBST)/ragbaby.c $(SUBST)/aristocrat.c $(SUBST)/keyphrase.c $(SUBST)/affine.c $(POLY)/running_key.c $(GRAPH)/baconian.c $(GRAPH)/compressocrat.c $(MACHINE)/enigma.c
 
 # Cipher-agnostic core + per-cipher-type solver modules (split out of colossus.c).
-SOLVERS=$(CORE)/engine.c $(CORE)/scoring.c $(TRANS)/trans_common.c $(POLY)/polyalpha_solver.c $(POLY)/gromark_solver.c $(POLY)/nicodemus_solver.c $(TRANS)/transmatrix_solver.c $(TRANS)/permutation_solver.c $(TRANS)/columnar_solver.c $(TRANS)/columnar_track_solver.c $(TRANS)/route_chain_solver.c $(TRANS)/tile_solver.c $(TRANS)/period_column_solver.c $(TRANS)/period_column_space_solver.c $(TRANS)/double_transposition_solver.c $(TRANS)/railfence_solver.c $(TRANS)/route_solver.c $(TRANS)/amsco_solver.c $(TRANS)/myszkowski_solver.c $(TRANS)/redefence_solver.c $(TRANS)/cadenus_solver.c $(TRANS)/nihilist_solver.c $(TRANS)/swagman_solver.c $(TRANS)/grille_solver.c $(SUBST)/indep_solver.c $(SUBST)/homophonic_solver.c $(GRAPH)/playfair_solver.c $(GRAPH)/bifid_solver.c $(GRAPH)/trifid_solver.c $(GRAPH)/hill_solver.c $(GRAPH)/phillips_solver.c $(GRAPH)/twosquare_solver.c $(GRAPH)/foursquare_solver.c $(GRAPH)/adfgvx_solver.c $(GRAPH)/nihilist_sub_solver.c $(GRAPH)/bazeries_solver.c $(GRAPH)/portax_solver.c $(POLY)/progkey_solver.c $(GRAPH)/slidefair_solver.c $(GRAPH)/seriated_playfair_solver.c $(GRAPH)/digrafid_solver.c $(GRAPH)/cm_bifid_solver.c $(GRAPH)/trisquare_solver.c $(POLY)/intkey_solver.c $(POLY)/condi_solver.c $(GRAPH)/fracmorse_solver.c $(GRAPH)/pollux_solver.c $(GRAPH)/morbit_solver.c $(GRAPH)/straddling_checkerboard_solver.c $(GRAPH)/monome_dinome_solver.c $(SUBST)/ragbaby_solver.c $(SUBST)/aristocrat_solver.c
+SOLVERS=$(CORE)/engine.c $(CORE)/scoring.c $(TRANS)/trans_common.c $(POLY)/polyalpha_solver.c $(POLY)/gromark_solver.c $(POLY)/nicodemus_solver.c $(TRANS)/transmatrix_solver.c $(TRANS)/permutation_solver.c $(TRANS)/columnar_solver.c $(TRANS)/columnar_track_solver.c $(TRANS)/route_chain_solver.c $(TRANS)/tile_solver.c $(TRANS)/period_column_solver.c $(TRANS)/period_column_space_solver.c $(TRANS)/double_transposition_solver.c $(TRANS)/railfence_solver.c $(TRANS)/route_solver.c $(TRANS)/amsco_solver.c $(TRANS)/myszkowski_solver.c $(TRANS)/redefence_solver.c $(TRANS)/cadenus_solver.c $(TRANS)/nihilist_solver.c $(TRANS)/swagman_solver.c $(TRANS)/grille_solver.c $(SUBST)/indep_solver.c $(SUBST)/homophonic_solver.c $(GRAPH)/playfair_solver.c $(GRAPH)/bifid_solver.c $(GRAPH)/trifid_solver.c $(GRAPH)/hill_solver.c $(GRAPH)/phillips_solver.c $(GRAPH)/twosquare_solver.c $(GRAPH)/foursquare_solver.c $(GRAPH)/adfgvx_solver.c $(GRAPH)/nihilist_sub_solver.c $(GRAPH)/bazeries_solver.c $(GRAPH)/portax_solver.c $(POLY)/progkey_solver.c $(GRAPH)/slidefair_solver.c $(GRAPH)/seriated_playfair_solver.c $(GRAPH)/digrafid_solver.c $(GRAPH)/cm_bifid_solver.c $(GRAPH)/twin_bifid_solver.c $(GRAPH)/twin_trifid_solver.c $(GRAPH)/trisquare_solver.c $(POLY)/intkey_solver.c $(POLY)/condi_solver.c $(GRAPH)/fracmorse_solver.c $(GRAPH)/pollux_solver.c $(GRAPH)/morbit_solver.c $(GRAPH)/straddling_checkerboard_solver.c $(GRAPH)/monome_dinome_solver.c $(GRAPH)/tridigital_solver.c $(GRAPH)/checkerboard_solver.c $(TRANS)/sequence_transposition_solver.c $(GRAPH)/grandpre_solver.c $(GRAPH)/syllabary_solver.c $(SUBST)/ragbaby_solver.c $(SUBST)/aristocrat_solver.c $(SUBST)/keyphrase_solver.c $(SUBST)/affine_solver.c $(POLY)/layered_solver.c $(GRAPH)/hill_quag_solver.c $(POLY)/running_key_solver.c $(GRAPH)/baconian_solver.c $(GRAPH)/compressocrat_solver.c $(MACHINE)/enigma_solver.c $(MACHINE)/enigma_bombe.c
 
 # The full solver translation-unit set (everything but the test harnesses).
 SOLVER_SRC=$(PRIMITIVES) $(SOLVERS) $(CORE)/colossus.c
@@ -52,6 +53,8 @@ test:
 	./tests/test_optimal_cycleword
 	$(CC) $(INCLUDES) tests/test_held_karp.c $(TRANS)/trans_common.c $(CORE)/scoring.c $(CORE)/utils.c $(CORE)/dict.c $(CORE)/spaces.c -o tests/test_held_karp
 	./tests/test_held_karp
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_layered.c $(SOLVER_SRC) -o tests/test_layered
+	./tests/test_layered
 	$(CC) $(INCLUDES) tests/test_playfair.c $(CORE)/utils.c $(GRAPH)/playfair.c -o tests/test_playfair
 	./tests/test_playfair
 	$(CC) $(INCLUDES) tests/test_bifid.c $(CORE)/utils.c $(GRAPH)/bifid.c -o tests/test_bifid
@@ -94,6 +97,10 @@ test:
 	./tests/test_digrafid
 	$(CC) $(INCLUDES) tests/test_cm_bifid.c $(CORE)/utils.c $(GRAPH)/cm_bifid.c $(GRAPH)/bifid.c -o tests/test_cm_bifid
 	./tests/test_cm_bifid
+	$(CC) $(INCLUDES) tests/test_twin_bifid.c $(CORE)/utils.c $(GRAPH)/twin_bifid.c $(GRAPH)/bifid.c -o tests/test_twin_bifid
+	./tests/test_twin_bifid
+	$(CC) $(INCLUDES) tests/test_twin_trifid.c $(CORE)/utils.c $(GRAPH)/twin_trifid.c $(GRAPH)/trifid.c -o tests/test_twin_trifid
+	./tests/test_twin_trifid
 	$(CC) $(INCLUDES) tests/test_fracmorse.c $(CORE)/utils.c $(GRAPH)/fracmorse.c -o tests/test_fracmorse
 	./tests/test_fracmorse
 	$(CC) $(INCLUDES) tests/test_period_column.c $(CORE)/utils.c $(TRANS)/period_column.c -o tests/test_period_column
@@ -106,12 +113,36 @@ test:
 	./tests/test_straddling_checkerboard
 	$(CC) $(INCLUDES) tests/test_monome_dinome.c $(CORE)/utils.c $(GRAPH)/monome_dinome.c -o tests/test_monome_dinome
 	./tests/test_monome_dinome
+	$(CC) $(INCLUDES) tests/test_tridigital.c $(CORE)/utils.c $(GRAPH)/tridigital.c -o tests/test_tridigital
+	./tests/test_tridigital
+	$(CC) $(INCLUDES) tests/test_checkerboard.c $(CORE)/utils.c $(GRAPH)/checkerboard.c $(GRAPH)/bifid.c -o tests/test_checkerboard
+	./tests/test_checkerboard
 	$(CC) $(INCLUDES) tests/test_ragbaby.c $(CORE)/utils.c $(SUBST)/ragbaby.c -o tests/test_ragbaby
 	./tests/test_ragbaby
 	$(CC) $(INCLUDES) tests/test_aristocrat.c $(CORE)/utils.c $(SUBST)/aristocrat.c -o tests/test_aristocrat
 	./tests/test_aristocrat
+	$(CC) $(INCLUDES) tests/test_sequence_transposition.c $(CORE)/utils.c $(TRANS)/sequence_transposition.c $(POLY)/gromark.c -o tests/test_sequence_transposition
+	./tests/test_sequence_transposition
+	$(CC) $(INCLUDES) tests/test_grandpre.c $(CORE)/utils.c $(GRAPH)/grandpre.c -o tests/test_grandpre
+	./tests/test_grandpre
+	$(CC) $(INCLUDES) tests/test_running_key.c $(CORE)/utils.c $(POLY)/running_key.c -o tests/test_running_key
+	./tests/test_running_key
+	$(CC) $(INCLUDES) tests/test_syllabary.c $(CORE)/utils.c $(GRAPH)/syllabary.c -o tests/test_syllabary
+	./tests/test_syllabary
+	$(CC) $(INCLUDES) tests/test_keyphrase.c $(CORE)/utils.c $(SUBST)/keyphrase.c -o tests/test_keyphrase
+	./tests/test_keyphrase
+	$(CC) $(INCLUDES) tests/test_affine.c $(CORE)/utils.c $(SUBST)/affine.c -o tests/test_affine
+	./tests/test_affine
+	$(CC) $(INCLUDES) tests/test_baconian.c $(CORE)/utils.c $(GRAPH)/baconian.c -o tests/test_baconian
+	./tests/test_baconian
+	$(CC) $(INCLUDES) tests/test_compressocrat.c $(CORE)/utils.c $(GRAPH)/compressocrat.c -o tests/test_compressocrat
+	./tests/test_compressocrat
+	$(CC) $(INCLUDES) tests/test_enigma.c $(CORE)/utils.c $(MACHINE)/enigma.c -o tests/test_enigma
+	./tests/test_enigma
 	$(CC) $(INCLUDES) tests/test_double_transposition.c $(TRANS)/double_transposition_solver.c $(TRANS)/transpositions.c $(CORE)/scoring.c $(CORE)/utils.c $(CORE)/dict.c $(CORE)/spaces.c -o tests/test_double_transposition
 	./tests/test_double_transposition
+	$(CC) $(INCLUDES) tests/test_ngram_bin.c $(CORE)/scoring.c $(CORE)/utils.c $(CORE)/spaces.c -o tests/test_ngram_bin
+	./tests/test_ngram_bin
 
 # Slow optimizer regression suite (~30s): planted-cipher recovery through the
 # full solve_cipher hill climber at fixed seeds and budgets. Kept separate from
@@ -163,6 +194,10 @@ testopt:
 	./tests/test_digrafid_solver
 	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_cm_bifid_solver.c $(SOLVER_SRC) -o tests/test_cm_bifid_solver
 	./tests/test_cm_bifid_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_twin_bifid_solver.c $(SOLVER_SRC) -o tests/test_twin_bifid_solver
+	./tests/test_twin_bifid_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_twin_trifid_solver.c $(SOLVER_SRC) -o tests/test_twin_trifid_solver
+	./tests/test_twin_trifid_solver
 	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_fracmorse_solver.c $(SOLVER_SRC) -o tests/test_fracmorse_solver
 	./tests/test_fracmorse_solver
 	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_period_column_solver.c $(SOLVER_SRC) -o tests/test_period_column_solver
@@ -179,10 +214,32 @@ testopt:
 	./tests/test_straddling_checkerboard_solver
 	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_monome_dinome_solver.c $(SOLVER_SRC) -o tests/test_monome_dinome_solver
 	./tests/test_monome_dinome_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_tridigital_solver.c $(SOLVER_SRC) -o tests/test_tridigital_solver
+	./tests/test_tridigital_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_checkerboard_solver.c $(SOLVER_SRC) -o tests/test_checkerboard_solver
+	./tests/test_checkerboard_solver
 	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_ragbaby_solver.c $(SOLVER_SRC) -o tests/test_ragbaby_solver
 	./tests/test_ragbaby_solver
 	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_aristocrat_solver.c $(SOLVER_SRC) -o tests/test_aristocrat_solver
 	./tests/test_aristocrat_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_sequence_transposition_solver.c $(SOLVER_SRC) -o tests/test_sequence_transposition_solver
+	./tests/test_sequence_transposition_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_grandpre_solver.c $(SOLVER_SRC) -o tests/test_grandpre_solver
+	./tests/test_grandpre_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_running_key_solver.c $(SOLVER_SRC) -o tests/test_running_key_solver
+	./tests/test_running_key_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_syllabary_solver.c $(SOLVER_SRC) -o tests/test_syllabary_solver
+	./tests/test_syllabary_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_keyphrase_solver.c $(SOLVER_SRC) -o tests/test_keyphrase_solver
+	./tests/test_keyphrase_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_affine_solver.c $(SOLVER_SRC) -o tests/test_affine_solver
+	./tests/test_affine_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_baconian_solver.c $(SOLVER_SRC) -o tests/test_baconian_solver
+	./tests/test_baconian_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_compressocrat_solver.c $(SOLVER_SRC) -o tests/test_compressocrat_solver
+	./tests/test_compressocrat_solver
+	$(CC) $(INCLUDES) -DCOLOSSUS_NO_MAIN tests/test_enigma_solver.c $(SOLVER_SRC) -o tests/test_enigma_solver
+	./tests/test_enigma_solver
 
 # Everything.
 testall: test testopt
@@ -302,6 +359,14 @@ digrafid_gen:
 cm_bifid_gen:
 	$(CC) $(INCLUDES) tools/cm_bifid_gen.c $(GRAPH)/cm_bifid.c $(GRAPH)/bifid.c $(CORE)/utils.c -o tools/cm_bifid_gen
 
+# Twin Bifid / Twin Trifid generators: emit TWO ciphertexts from ONE key at two periods,
+# sharing a common plaintext phrase. Reuse the real cipher code so they can never drift.
+twin_bifid_gen:
+	$(CC) $(INCLUDES) tools/twin_bifid_gen.c $(GRAPH)/twin_bifid.c $(GRAPH)/bifid.c $(CORE)/utils.c -o tools/twin_bifid_gen
+
+twin_trifid_gen:
+	$(CC) $(INCLUDES) tools/twin_trifid_gen.c $(GRAPH)/twin_trifid.c $(GRAPH)/trifid.c $(CORE)/utils.c -o tools/twin_trifid_gen
+
 # Standalone test-data generator for Fractionated Morse ciphers. Reuses the real cipher code
 # (fracmorse.c + utils.c) so the generator and the solver can never drift in convention.
 fracmorse_gen:
@@ -331,6 +396,17 @@ straddling_checkerboard_gen:
 monome_dinome_gen:
 	$(CC) $(INCLUDES) tools/monome_dinome_gen.c $(GRAPH)/monome_dinome.c $(CORE)/utils.c -o tools/monome_dinome_gen
 
+# Standalone Tridigital generator. Reuses the real primitive (tridigital.c + utils.c)
+# so the generator and the solver can never drift in convention.
+tridigital_gen:
+	$(CC) $(INCLUDES) tools/tridigital_gen.c $(GRAPH)/tridigital.c $(CORE)/utils.c -o tools/tridigital_gen
+
+# Standalone Checkerboard generator. Reuses the real primitive (checkerboard.c + bifid.c keyed-square
+# build + utils.c) so the generator and the solver can never drift in convention. The complex
+# (two-keyword) case's 2x2 label choice is randomized inside the primitive under a fixed seed.
+checkerboard_gen:
+	$(CC) $(INCLUDES) tools/checkerboard_gen.c $(GRAPH)/checkerboard.c $(GRAPH)/bifid.c $(CORE)/utils.c -o tools/checkerboard_gen
+
 # Standalone test-data generator for double columnar transposition ciphers. Reuses the
 # real columnar primitive (transpositions.c) so the generator and the solver can never
 # drift in convention.
@@ -347,5 +423,50 @@ ragbaby_gen:
 aristocrat_gen:
 	$(CC) $(INCLUDES) tools/aristocrat_gen.c $(SUBST)/aristocrat.c $(CORE)/utils.c -o tools/aristocrat_gen
 
+# Standalone Sequence Transposition generator. Reuses the real primitive
+# (sequence_transposition.c + gromark.c chain-addition + utils.c) so the generator and the
+# solver can never drift in convention.
+sequence_transposition_gen:
+	$(CC) $(INCLUDES) tools/sequence_transposition_gen.c $(TRANS)/sequence_transposition.c $(POLY)/gromark.c $(CORE)/utils.c -o tools/sequence_transposition_gen
+
+# Standalone Grandpre generator. Reuses the real primitive (grandpre.c + utils.c) so the
+# generator and the solver can never drift. Homophone choice is random (isolog); -seed fixes it.
+grandpre_gen:
+	$(CC) $(INCLUDES) tools/grandpre_gen.c $(GRAPH)/grandpre.c $(CORE)/utils.c -o tools/grandpre_gen
+
+# Standalone Syllabary generator. Reuses the real primitive (syllabary.c + utils.c) so the
+# generator and the solver can never drift. The square is a reproducible random scramble (-sqseed).
+syllabary_gen:
+	$(CC) $(INCLUDES) tools/syllabary_gen.c $(GRAPH)/syllabary.c $(CORE)/utils.c -o tools/syllabary_gen
+
+# Standalone Key Phrase generator. Reuses the real primitive (keyphrase.c + utils.c) so the
+# generator and the solver can never drift in convention.
+keyphrase_gen:
+	$(CC) $(INCLUDES) tools/keyphrase_gen.c $(SUBST)/keyphrase.c $(CORE)/utils.c -o tools/keyphrase_gen
+
+# Standalone Affine generator. Reuses the real primitive (affine.c + utils.c) so the
+# generator and the solver can never drift in convention.
+affine_gen:
+	$(CC) $(INCLUDES) tools/affine_gen.c $(SUBST)/affine.c $(CORE)/utils.c -o tools/affine_gen
+
+# Standalone Running Key generator. Reuses the real primitive (running_key.c + utils.c) so the
+# generator and the solver can never drift. Self-keyed (default) or independent (with a keyfile).
+running_key_gen:
+	$(CC) $(INCLUDES) tools/running_key_gen.c $(POLY)/running_key.c $(CORE)/utils.c -o tools/running_key_gen
+
+# Standalone Baconian generator. Reuses the real primitive (baconian.c + utils.c) so the
+# generator and solver can never drift.
+baconian_gen:
+	$(CC) $(INCLUDES) tools/baconian_gen.c $(GRAPH)/baconian.c $(CORE)/utils.c -o tools/baconian_gen
+
+# Standalone Compressocrat generator. Reuses the real primitive (compressocrat.c + utils.c) so
+# the generator and solver can never drift.
+compressocrat_gen:
+	$(CC) $(INCLUDES) tools/compressocrat_gen.c $(GRAPH)/compressocrat.c $(CORE)/utils.c -o tools/compressocrat_gen
+
+# Standalone Enigma generator. Reuses the real primitive (enigma.c + utils.c).
+enigma_gen:
+	$(CC) $(INCLUDES) tools/enigma_gen.c $(MACHINE)/enigma.c $(CORE)/utils.c -o tools/enigma_gen
+
 clean:
-	rm -f colossus tests/test_transpositions tests/test_ciphers tests/test_optimal_cycleword tests/test_held_karp tests/test_solver tests/test_playfair tests/test_playfair_solver tests/test_bifid tests/test_bifid_solver tests/test_trifid tests/test_trifid_solver tests/test_hill tests/test_hill_solver tests/test_gronsfeld tests/test_gronsfeld_solver tests/test_phillips tests/test_phillips_solver tests/test_twosquare tests/test_twosquare_solver tests/test_foursquare tests/test_foursquare_solver tests/test_adfgvx tests/test_adfgvx_solver tests/test_nihilist_sub tests/test_nihilist_sub_solver tests/test_gromark tests/test_gromark_solver tests/test_nicodemus tests/test_nicodemus_solver tests/test_bazeries tests/test_bazeries_solver tests/test_portax tests/test_portax_solver tests/test_progkey tests/test_progkey_solver tests/test_slidefair tests/test_slidefair_solver tests/test_seriated_playfair tests/test_seriated_playfair_solver tests/test_digrafid tests/test_digrafid_solver tests/test_cm_bifid tests/test_cm_bifid_solver tests/test_trisquare tests/test_trisquare_solver tests/test_intkey tests/test_intkey_solver tests/test_condi tests/test_condi_solver tests/test_fracmorse tests/test_fracmorse_solver tests/test_period_column tests/test_period_column_solver tests/test_period_column_space_solver tests/test_double_transposition tests/test_double_transposition_solver tests/test_pollux tests/test_pollux_solver tests/test_morbit tests/test_morbit_solver tests/test_straddling_checkerboard tests/test_straddling_checkerboard_solver tests/test_monome_dinome tests/test_monome_dinome_solver tests/test_ragbaby tests/test_ragbaby_solver tests/test_aristocrat tests/test_aristocrat_solver tools/ragbaby_gen tools/aristocrat_gen tools/monome_dinome_gen tools/straddling_checkerboard_gen tools/period_column_gen tools/double_transposition_gen tools/pollux_gen tools/morbit_gen tools/fracmorse_gen tools/trisquare_gen tools/intkey_gen tools/condi_gen tools/homophonic_gen tools/digrafid_gen tools/cm_bifid_gen tools/seriated_playfair_gen tools/slidefair_gen tools/progkey_gen tools/portax_gen tools/bazeries_gen tools/nihilist_sub_gen tools/playfair_gen tools/bifid_gen tools/trifid_gen tools/hill_gen tools/gronsfeld_gen tools/phillips_gen tools/twosquare_gen tools/foursquare_gen tools/adfgvx_gen tools/gromark_gen tools/nicodemus_gen
+	rm -f colossus tests/test_transpositions tests/test_ciphers tests/test_optimal_cycleword tests/test_held_karp tests/test_solver tests/test_playfair tests/test_playfair_solver tests/test_bifid tests/test_bifid_solver tests/test_trifid tests/test_trifid_solver tests/test_hill tests/test_hill_solver tests/test_gronsfeld tests/test_gronsfeld_solver tests/test_phillips tests/test_phillips_solver tests/test_twosquare tests/test_twosquare_solver tests/test_foursquare tests/test_foursquare_solver tests/test_adfgvx tests/test_adfgvx_solver tests/test_nihilist_sub tests/test_nihilist_sub_solver tests/test_gromark tests/test_gromark_solver tests/test_nicodemus tests/test_nicodemus_solver tests/test_bazeries tests/test_bazeries_solver tests/test_portax tests/test_portax_solver tests/test_progkey tests/test_progkey_solver tests/test_slidefair tests/test_slidefair_solver tests/test_seriated_playfair tests/test_seriated_playfair_solver tests/test_digrafid tests/test_digrafid_solver tests/test_cm_bifid tests/test_cm_bifid_solver tests/test_twin_bifid tests/test_twin_bifid_solver tests/test_twin_trifid tests/test_twin_trifid_solver tests/test_trisquare tests/test_trisquare_solver tests/test_intkey tests/test_intkey_solver tests/test_condi tests/test_condi_solver tests/test_fracmorse tests/test_fracmorse_solver tests/test_period_column tests/test_period_column_solver tests/test_period_column_space_solver tests/test_double_transposition tests/test_double_transposition_solver tests/test_pollux tests/test_pollux_solver tests/test_morbit tests/test_morbit_solver tests/test_straddling_checkerboard tests/test_straddling_checkerboard_solver tests/test_monome_dinome tests/test_monome_dinome_solver tests/test_tridigital tests/test_tridigital_solver tests/test_checkerboard tests/test_checkerboard_solver tests/test_ragbaby tests/test_ragbaby_solver tests/test_aristocrat tests/test_aristocrat_solver tests/test_sequence_transposition tests/test_sequence_transposition_solver tests/test_grandpre tests/test_grandpre_solver tests/test_syllabary tests/test_syllabary_solver tests/test_keyphrase tests/test_keyphrase_solver tests/test_affine tests/test_affine_solver tests/test_running_key tests/test_running_key_solver tests/test_baconian tests/test_baconian_solver tests/test_compressocrat tests/test_compressocrat_solver tests/test_enigma tests/test_enigma_solver tools/enigma_gen tools/running_key_gen tools/baconian_gen tools/compressocrat_gen tools/sequence_transposition_gen tools/grandpre_gen tools/syllabary_gen tools/keyphrase_gen tools/affine_gen tools/ragbaby_gen tools/aristocrat_gen tools/monome_dinome_gen tools/tridigital_gen tools/checkerboard_gen tools/straddling_checkerboard_gen tools/period_column_gen tools/double_transposition_gen tools/pollux_gen tools/morbit_gen tools/fracmorse_gen tools/trisquare_gen tools/intkey_gen tools/condi_gen tools/homophonic_gen tools/digrafid_gen tools/cm_bifid_gen tools/twin_bifid_gen tools/twin_trifid_gen tools/seriated_playfair_gen tools/slidefair_gen tools/progkey_gen tools/portax_gen tools/bazeries_gen tools/nihilist_sub_gen tools/playfair_gen tools/bifid_gen tools/trifid_gen tools/hill_gen tools/gronsfeld_gen tools/phillips_gen tools/twosquare_gen tools/foursquare_gen tools/adfgvx_gen tools/gromark_gen tools/nicodemus_gen

@@ -11,7 +11,7 @@
 # full plaintext in a couple of seconds, reliably across seeds (was 8/8 in testing).
 ../../colossus -type homophonic -multiline \
     -cipher z408.txt \
-    -ngramsize 5 -ngramfile ../../english_quintgrams.txt -logprob  \
+    -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt -logprob  \
     -nrestarts 150 -nhillclimbs 50000 \
     -inittemp 0.02 -weightmono 1.5 \
     -backtrackprob 0.15 -seed 1 -verbose

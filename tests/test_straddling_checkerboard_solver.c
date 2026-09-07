@@ -17,7 +17,7 @@ static int failures = 0, checks = 0;
 #define CHECK(cond, ...) do { checks++; if (!(cond)) { \
     failures++; printf("FAIL: "); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
-#define NGRAM_FILE (char *) "english_quadgrams.txt"
+#define NGRAM_FILE (char *) "ngram_data/english/english_quadgrams.txt"
 #define NGRAM_SIZE 4
 
 static SharedData shared;

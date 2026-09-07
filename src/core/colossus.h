@@ -109,9 +109,29 @@ typedef struct CribDrag {
 #define MONOME_DINOME      78  // Monome-Dinome: keyed 3x8 box, 24-letter alphabet (J->I, Z->Y); digit fractionation (monome/dinome)
 #define ARISTOCRAT         79  // Aristocrat: simple monoalphabetic substitution, WORD DIVISIONS preserved (spaced plaintext)
 #define PATRISTOCRAT       80  // Patristocrat: the same monoalphabetic substitution WITHOUT word divisions (5-letter groups)
+#define TRIDIGITAL         81  // Tridigital: keyed 3x10 block, digit-per-letter with a word-separator digit (ambiguous 3-to-1 decode)
+#define CHECKERBOARD       82  // Checkerboard (ACA): plaintext letter -> (row label, col label) digraph over a keyed 5x5 square; simple (1 label/axis) or complex (2 labels/axis, homophonic)
+#define SEQUENCE_TRANSPOSITION 83  // Sequence Transposition (ACA): chain-addition digit sequence buckets each plaintext letter into one of 10 columns; a 10-letter keyword sets the bucket read-out order (a transposition)
+#define GRANDPRE           84  // Grandpre (ACA): N x N word square; each plaintext letter -> a 2-digit (row,col) code of any cell holding it (homophonic over <= N^2 numeric codes -> 26 letters)
+#define SYLLABARY          85  // Syllabary (ACA): 10x10 square of 100 fixed syllabary tokens; each plaintext element -> a 2-digit (row,col) code (substitution over 100 codes -> 100 known 1-3 letter tokens, length-changing)
+#define KEY_PHRASE         86  // Key Phrase (ACA): a 26-letter phrase IS the cipher alphabet, matched to straight a..z; the phrase repeats letters so decode is many-to-one (ambiguous) -> partition of a..z among the observed ct letters + inner beam-Viterbi
+#define AFFINE             87  // Affine: monoalphabetic CT = (a*PT + b) mod 26, gcd(a,26)=1; deterministic-exhaustive 12 multipliers x 26 shifts = 312 keys
+#define QUAG_TRANS         88  // Layered (Paradigm): outer Quagmire III (keyed alphabet) o inner columnar transposition, -depth {0,1,2}; strip Quag by monogram, solve transposition by n-gram, refine cycleword through it
+#define HILL_QUAG          89  // Layered (Paradigm): outer Hill(kxk) o inner Quagmire III; search the Hill matrix by the inner Quag's period-P columnar IoC (key-independent), then strip Hill and solve the Quagmire
+#define RUNNING_KEY        90  // Running Key (ACA): Vigenere-family with a running-TEXT key (key length == message length, no period). Self-keyed (plaintext's first half keys its second), independent-key, or known-key (-runningkeyfile); blind search scores BOTH streams as English (beam warm start + anneal over the key stream)
+#define BACONIAN           91  // Baconian (ACA): biliteral 5-symbol substitution (fixed 24-letter table, I=J/U=V) concealed in cover text; search the a/b CLASSIFIER over per-letter/per-word grouping (canonical sweeps + free anneal), decode via the fixed table, biliteral-validity reward
+#define COMPRESSOCRAT      92  // Compressocrat (ACA): fractionation twin of Fractionated Morse; FIXED prefix-free {1,2,3} Huffman code + keyed 26-alphabet mapping trigraphs (333 excluded) to ciphertext letters; length-changing decode, keyed-alphabet anneal + validity reward
+#define TWIN_BIFID         93  // Twin Bifid (ACA): two Bifid messages sharing ONE keyed 5x5 Polybius square at DIFFERENT periods (the plaintexts share a common phrase); joint single-square anneal scoring both decrypts (~2x n-gram signal); second ciphertext via -cipher2, periods -period/-period2
+#define TWIN_TRIFID        94  // Twin Trifid (ACA): the Trifid analogue -- two Trifid messages sharing ONE keyed 3x3x3 cube at different periods; joint single-cube anneal over both decrypts; second ciphertext via -cipher2, periods -period/-period2
+#define ENIGMA             95  // Enigma (rotor machine): Services Enigma I + naval M3/M4; ciphertext-only IoC/ring/plugboard attack (Gillogly) OR Turing-Welchman Bombe (-bombe with a crib); rotors I-VIII, Greek Beta/Gamma, reflectors B/C (+thin), plugboard
 
-#define N_CIPHER_TYPES     81   // number of real cipher-type codes (0..80 inclusive)
+#define N_CIPHER_TYPES     96   // number of real cipher-type codes (0..95 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
+
+// Baconian grouping mode (-baconmode / cfg.bacon_mode): which cover unit is one a/b symbol.
+#define BAC_MODE_AUTO      0    // sweep both per-letter and per-word (default)
+#define BAC_MODE_LETTER    1    // every cover letter is one a/b symbol
+#define BAC_MODE_WORD      2    // the first letter of each word is one a/b symbol
 
 #define GRONSFELD_DIGITS 10     // Gronsfeld key digits are 0..9 (the shift domain, vs 26)
 
@@ -179,6 +199,27 @@ static inline int intkey_base(int cipher_type) {
 enum { NIH_ADD_CARRY = 0,    // integer add with carry (ACA standard): cipher 22..110
        NIH_ADD_NOCARRY = 1,  // per-digit add mod 10, no carry: cipher 00..99 (2-digit)
        NIH_ADD_MOD100 = 2 }; // 2-digit add mod 100: cipher 00..99
+
+#define CHECKERBOARD_SIDE     5   // Checkerboard Polybius square side (5x5, 25 letters, J->I)
+#define CHECKERBOARD_GRID     25  // CHECKERBOARD_SIDE^2
+#define CHECKERBOARD_MAX_SIDE 6   // largest side the side-generic primitive/tests support
+#define CHECKERBOARD_MAX_GRID 36  // CHECKERBOARD_MAX_SIDE^2
+#define CHECKERBOARD_MAX_LABELS 12 // 2 * CHECKERBOARD_MAX_SIDE (complex case: 2 labels per line)
+// Checkerboard square-fill routes: how the keyed-alphabet SEQUENCE lands in the grid cells.
+// The ACA square is spiral-routed (keyword+tail read clockwise from top-left); row-major is the
+// plain Polybius fill. Only the generator/tests care -- the solver searches the composite
+// code->letter map and never sees the route.
+enum { CB_ROUTE_ROWMAJOR = 0, CB_ROUTE_SPIRAL_CW = 1 };
+
+// Sequence Transposition (ACA): a chain-addition digit sequence (one digit 0..9 per plaintext
+// letter, same recurrence as Gromark) drops each letter into one of 10 columns keyed by its
+// digit; a 10-letter keyword ranks the columns into a read-out order. The cryptanalytic unknown
+// is that read-order permutation of the 10 buckets (10!); the primer (default 5 digits) is
+// transmitted in the ACA convention, so the solver either takes it (-primer) or recovers it by a
+// Gromark-style primer pre-pass.
+#define SEQ_TRANS_BUCKETS    10  // digit columns 0..9 (fixed: chain-addition digits are 0..9)
+#define SEQ_TRANS_PRIMER_LEN  5  // ACA standard primer length (chain-addition lag)
+#define SEQ_TRANS_MAX_PRIMER  8  // largest primer length the solver/parser accept
 
 #define TRIFID_SIDE 3           // Trifid cube side (the classic 3x3x3)
 #define TRIFID_CELLS 27         // Trifid cube size (TRIFID_SIDE^3) == the 27-symbol alphabet
@@ -312,7 +353,13 @@ typedef struct {
     bool period_present;
     int max_period;
     int n_periods;
-    int n_primers;      // Gromark: top-K primers the pre-pass keeps to anneal (0 => auto by length)
+    int n_primers;      // Gromark / Sequence Transposition: top-K primers the pre-pass keeps (0 => auto by length)
+
+    // Sequence Transposition: the chain-addition PRIMER. seq_primer_len == 0 means the primer
+    // was not supplied (-primer) and the solver runs a blind primer pre-pass; otherwise
+    // seq_primer[0..seq_primer_len-1] is the known primer (the ACA convention transmits it).
+    int seq_primer[SEQ_TRANS_MAX_PRIMER];
+    int seq_primer_len;
 
     // Progressive Key: pin the per-group progression index (else the solver sweeps 0..25).
     bool progression_present;
@@ -336,6 +383,12 @@ typedef struct {
     bool plaintext_keyword_len_present;
     bool ciphertext_keyword_len_present;
     bool cycleword_len_present;
+
+    // Layered (QUAG_TRANS): component cycleword lengths of a composed multi-Quagmire
+    // (e.g. -cyclewordlens 5,9 for Q(5)Q(9)); the effective period is their lcm. The
+    // component parameterization gives each shift ~N/len samples instead of ~N/lcm.
+    int  cycleword_lens[8];
+    int  n_cycleword_lens;
 
     // Explicit User Keywords (Strings)
     char user_plaintext_keyword[ALPHABET_SIZE + 1];
@@ -449,6 +502,54 @@ typedef struct {
     // reported candidate (see load_check_solution()/print_solution_check() in utils.c).
     bool check_solution_present;
     char check_solution_file[MAX_FILENAME_LEN];
+
+    // Running Key (RUNNING_KEY). runningkey_present + runningkey_file supply a KNOWN key
+    // text (-runningkeyfile: deterministic decrypt, e.g. drag K1/K2/K3 as a running key).
+    // runningkey_independent (-indepkey) selects the general blind mode (key is an
+    // unrelated English text) over the ACA default (self-keyed: the plaintext's first half
+    // is its own running key, so the whole 2N passage is recovered + a seam reward).
+    bool runningkey_present;
+    char runningkey_file[MAX_FILENAME_LEN];
+    bool runningkey_independent;
+
+    // Baconian (BACONIAN): the concealment grouping mode (-baconmode). BAC_MODE_AUTO
+    // (default) sweeps both per-letter and per-word; BAC_MODE_LETTER / BAC_MODE_WORD pin one.
+    int bacon_mode;
+
+    // Twin Bifid / Twin Trifid: a SECOND ciphertext sharing the same key at a DIFFERENT
+    // period. -cipher2 <file> sets twincipher_present + twincipher_file; main() reads the
+    // file into a buffer and points twincipher_str at it before solve_cipher (the single-
+    // string solve_cipher signature can't carry a second stream). The in-process solver
+    // tests set twincipher_str directly (no file). period2 (-period2) pins the second
+    // message's period (period pins the first, reusing the shared -period).
+    bool twincipher_present;
+    char twincipher_file[MAX_FILENAME_LEN];
+    char *twincipher_str;
+    int  period2;
+    bool period2_present;
+
+    // Enigma (ENIGMA). Machine geometry + optional key pins. `enigma_model` is 3 (M3 /
+    // Services Enigma I) or 4 (M4). `enigma_reflector`/`enigma_greek` are ENIGMA_UKW_* /
+    // ENIGMA_BETA|GAMMA ids (see enigma.h). -rotors/-ring/-startpos/-plugboard pin parts of
+    // the key (all four pinned => deterministic known-key decrypt); each *_present flag says
+    // the corresponding pin was supplied. Arrays index the 3 STEPPING wheels left->right;
+    // for M4 the Greek 4th wheel is enigma_greek at position/ring A. enigma_ntopk is the
+    // phase-1 top-K wheel orders carried to the plugboard climb; enigma_maxplugs caps the
+    // plugboard; enigma_bombe selects the Turing-Welchman crib attack.
+    int  enigma_model;              // 3 or 4
+    int  enigma_reflector;          // ENIGMA_UKW_*
+    int  enigma_greek;              // ENIGMA_BETA / ENIGMA_GAMMA (M4)
+    bool enigma_rotors_present;
+    int  enigma_rotors[3];          // stepping-wheel rotor ids, [0]=leftmost stepping wheel
+    bool enigma_ring_present;
+    int  enigma_ring[3];            // 0..25
+    bool enigma_pos_present;
+    int  enigma_pos[3];             // 0..25 window positions
+    bool enigma_plug_present;
+    int  enigma_plug[26];           // involution
+    int  enigma_ntopk;              // 0 => default 4
+    int  enigma_maxplugs;           // 0 => default 10
+    bool enigma_bombe;
 
 } ColossusConfig;
 
@@ -810,6 +911,19 @@ void gromark_periodic_decrypt(const int cipher[], int len, const int sigma[],
 void gromark_decrypt_core(const int cipher[], int len, const int sigma_inv[],
                      const int d[], const int offsets[], int period, int out[]);
 
+// Sequence Transposition cipher (sequence_transposition.c). The Gromark chain-addition digit
+// sequence (gromark_chain_key) labels each of the `len` plaintext positions with a digit 0..9;
+// letters are gathered column-by-column (all SS==0, then all SS==1, ...) and the columns are
+// read off in the order given by a 10-entry read-order permutation `pi` (pi[k] = the digit
+// column emitted at read step k). Encryption concatenates the columns in pi order; decryption
+// redistributes the ciphertext back to plaintext positions. pi is derived from a 10-letter
+// keyword by stable alphabetical rank (rank 1..10, with 10 written as digit 0).
+void sequence_transposition_pi_from_keyword(const char *keyword, int pi[]);
+void sequence_transposition_encrypt(const int plain[], int len, const int primer[],
+                     int primer_len, const int pi[], int out[]);
+void sequence_transposition_decrypt(const int cipher[], int len, const int primer[],
+                     int primer_len, const int pi[], int out[]);
+
 // Beaufort cipher
 void beaufort_decrypt(int decrypted[], int cipher_indices[], int cipher_len, 
     int cycleword_indices[], int cycleword_len);
@@ -963,6 +1077,16 @@ void cm_bifid_encrypt(const int plain[], int len, const int sq1[], const int sq2
 void cm_bifid_decrypt(const int cipher[], int len, const int sq1[], const int sq2[],
                       int side, int period, int out[]);
 
+// Twin Bifid cipher (twin_bifid.c). TWO Bifid messages under the SAME keyed square at two
+// DIFFERENT periods; decrypt writes the two plaintexts CONCATENATED (msg1 in out[0..n1-1],
+// msg2 in out[n1..n1+n2-1]) so a solver can n-gram-score the pair jointly. Thin wrappers over
+// bifid_encrypt/bifid_decrypt (which own the square convention + thread-local scratch).
+void twin_bifid_encrypt(const int plain1[], int n1, const int plain2[], int n2,
+                        const int grid[], int side, int period1, int period2,
+                        int out1[], int out2[]);
+void twin_bifid_decrypt(const int cipher1[], int n1, const int cipher2[], int n2,
+                        const int grid[], int side, int period1, int period2, int out[]);
+
 
 // Nihilist Substitution cipher (nihilist_sub.c). A periodic ADDITIVE cipher over a keyed
 // side x side Polybius square (a permutation of the active n = side*side alphabet, carried
@@ -983,6 +1107,31 @@ void nihilist_sub_encrypt(const int plain[], int n, const int grid[],
 int  nihilist_sub_decrypt(const int nums[], int n, const int grid[],
         const int rowlbl[], const int collbl[], int side,
         const int key_cells[], int period, int conv, int out_letters[]);
+
+
+// Checkerboard cipher (checkerboard.c). A keyed side x side Polybius square (a permutation of the
+// active n = side*side alphabet, J->I for the 5x5); each plaintext letter -> its cell -> a DIGRAPH
+// (row label, column label), row first, read from outside the square. The square is filled by
+// laying the keyed-alphabet SEQUENCE (bifid_grid_from_keyword) into the cells along a route
+// (CB_ROUTE_SPIRAL_CW is the ACA convention; row-major is the plain fill).
+//   SIMPLE case: one label per row/column (n_row_lbl == n_col_lbl == 1), so each letter has EXACTLY
+//     one digraph -- a bijection between side^2 codes and side^2 letters.
+//   COMPLEX case: two labels per row/column (n_row_lbl == 2), so each letter has 2x2 codes and the
+//     encipherer picks one freely per position -> HOMOPHONIC. The choice MUST be randomized on
+//     encode (a canonical pick starves the solver's gradient AND collapses the observed label set).
+// Encrypt labels are flat, row-major by line then choice: rowlbl[row*n_row_lbl + k] is row `row`'s
+// k-th label letter (0..n-1); likewise collbl. Decrypt inverts via label2row[]/label2col[] (indexed
+// by label letter 0..MAX_ALPHABET_SIZE-1, giving the row/col 0..side-1 or -1 for a non-label); a
+// position whose either coordinate is not a legal label decrypts to the sentinel letter 0, and the
+// returned count of LEGAL positions is a square-independent signal. checkerboard_detect reports the
+// number of distinct row/column labels observed (>side => that axis is complex).
+void checkerboard_spiral_order(int order[], int side);   // clockwise-from-top-left cell visit order
+void checkerboard_square_from_keyword(const int keyword[], int kwlen, int route, int grid[], int n);
+void checkerboard_encrypt(const int plain[], int plen, const int grid[], int side,
+        const int rowlbl[], int n_row_lbl, const int collbl[], int n_col_lbl, int out[]);
+int  checkerboard_decrypt(const int cipher[], int clen, const int grid[], int side,
+        const int label2row[], const int label2col[], int out_letters[]);
+void checkerboard_detect(const int cipher[], int clen, int *n_row_lbl, int *n_col_lbl);
 
 
 // ADFGVX / ADFGX cipher (adfgvx.c). Fractionation over a keyed side x side Polybius
@@ -1081,6 +1230,15 @@ void trifid_build_inverse(const int cube[], int pos[], int n);
 void trifid_encrypt(const int plain[], int len, const int cube[], int side, int period, int out[]);
 void trifid_decrypt(const int cipher[], int len, const int cube[], int side, int period, int out[]);
 void trifid_cube_from_keyword(const int keyword[], int kwlen, int cube[], int n);
+
+// Twin Trifid cipher (twin_trifid.c). TWO Trifid messages under the SAME keyed cube at two
+// DIFFERENT periods; decrypt writes the two plaintexts CONCATENATED (msg1 in out[0..n1-1],
+// msg2 in out[n1..n1+n2-1]) for joint scoring. Thin wrappers over trifid_encrypt/trifid_decrypt.
+void twin_trifid_encrypt(const int plain1[], int n1, const int plain2[], int n2,
+                         const int cube[], int side, int period1, int period2,
+                         int out1[], int out2[]);
+void twin_trifid_decrypt(const int cipher1[], int n1, const int cipher2[], int n2,
+                         const int cube[], int side, int period1, int period2, int out[]);
 
 
 // Digrafid cipher (digrafid.c). A digraphic fractionation cipher over two keyed 27-symbol
@@ -1221,6 +1379,25 @@ void print_cipher(const int indices[], int len, const SymbolTable *tab);
 extern bool g_ngram_logprob;      // n-gram scoring mode (see utils.c); false = legacy
 extern bool g_ngram_reverse;      // reversal-invariant table (see utils.c); false = off
 extern double g_ngram_floor;      // per-window n-gram floor for the entropy term (utils.c)
+// Compressed (.ngbin) n-gram table. When a dense 8-bit table is mmap'd, g_ngram_u8
+// points at its payload and ngram_score/ngram_sum_raw score via g_ngram_lut[byte]
+// instead of the float array. NULL (default) => the historical float path is taken
+// verbatim, so every existing solve stays bit-identical. Written once on the main
+// thread before workers start (setup-phase static, shared, read-only during search).
+extern const unsigned char *g_ngram_u8;  // dense 8-bit table payload, or NULL
+extern float  g_ngram_lut[256];          // byte -> float weight (floor + byte*scale)
+extern size_t g_ngram_mmap_len;          // mmap length for cleanup (0 if malloc/none)
+
+// Weight of the n-gram at packed index `idx`, from whichever table is active: the
+// dequantizing LUT when a compressed 8-bit table is mmap'd (g_ngram_u8 != NULL), else
+// the float table `nd`. Lets the incremental-fast-path solvers (aristocrat / homophonic
+// / checkerboard / grandpre, which read the table directly) work with either
+// representation; the g_ngram_u8 == NULL branch returns nd[idx] unchanged, so the float
+// path stays numerically bit-identical. (ngram_score/ngram_sum_raw inline this select
+// themselves for the tight window walks.)
+static inline double ngram_weight_at(const float *nd, int idx) {
+    return g_ngram_u8 ? (double) g_ngram_lut[g_ngram_u8[idx]] : nd[idx];
+}
 extern bool g_score_no_sentinel;  // decoded cipher is all-letters (see utils.c); false = safe
 extern const CribDrag *g_cribdrag; // dragged cribs consulted by state_score; NULL = off
 extern float g_cribdrag_weight;    // crib-drag blend weight; 0 = off

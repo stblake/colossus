@@ -14,7 +14,7 @@
 //    4. a Periodic Gromark blind solve (period swept).
 //
 //  Gromark runs on the full 26-letter alphabet and needs the log-probability fitness. Run from
-//  the source directory (loads english_quadgrams.txt).
+//  the source directory (loads ngram_data/english/english_quadgrams.txt).
 //
 
 #include "colossus.h"
@@ -30,7 +30,7 @@ static int checks = 0;
     if (!(cond)) { failures++; printf("FAIL: "); printf(__VA_ARGS__); printf("\n"); } \
 } while (0)
 
-#define NGRAM_FILE "english_quadgrams.txt"
+#define NGRAM_FILE "ngram_data/english/english_quadgrams.txt"
 #define NGRAM_SIZE 4
 
 static SharedData shared;

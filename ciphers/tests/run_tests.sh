@@ -26,7 +26,7 @@
 
 cd "$(dirname "$0")" || exit 2
 BIN=../../colossus
-NGRAMS=../../english_quadgrams.txt
+NGRAMS=../../ngram_data/english/english_quadgrams.txt
 NG="-ngramsize 4 -ngramfile $NGRAMS"
 COMMON="-backtrackprob 0.15 -slipprob 0.0005"
 SEED=${SEED:-1}
@@ -92,6 +92,13 @@ fast | q3_p127   | q3 | q3_p127.txt   | -plaintextkeywordlen 8 -ciphertextkeywor
 fast | q3_p128   | q3 | q3_p128.txt   | -plaintextkeywordlen 5 -ciphertextkeywordlen 5 -cyclewordlen 5 -nrestarts 200 -nhillclimbs 1000
 slow | q4_p130   | q4 | q4_p130.txt   | -plaintextkeywordlen 4 -ciphertextkeywordlen 7 -cyclewordlen 5 -nrestarts 800 -nhillclimbs 3000
 slow | q4_p131   | q4 | q4_p131.txt   | -plaintextkeywordlen 5 -ciphertextkeywordlen 5 -cyclewordlen 5 -nrestarts 800 -nhillclimbs 3000
+# --- Paradigm layered ciphers (GitHub issue #5): outer Quagmire/Hill over an inner
+#     transposition/Quagmire, all KRYPTOS-keyed. Quintgrams + -logprob. PK3/4/6 solve
+#     to ~100%; PK7's outer Hill is length-limited but the real 279-char puzzle solves.
+fast | paradigm_pk3 | quagtrans | paradigm_pk3.txt | -depth 0 -cyclewordlens 10,8 -plaintextkeyword KRYPTOS -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt
+slow | paradigm_pk4 | quagtrans | paradigm_pk4.txt | -depth 1 -cyclewordlens 5,9 -mincols 8 -maxcols 8 -readdir both -plaintextkeyword KRYPTOS -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt
+slow | paradigm_pk6 | quagtrans | paradigm_pk6.txt | -depth 2 -cyclewordlens 6 -mincols 9 -maxcols 9 -readdir both -nrestarts 300 -nhillclimbs 3000 -plaintextkeyword KRYPTOS -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt
+slow | paradigm_pk7 | hillquag | paradigm_pk7.txt | -period 3 -cyclewordlen 6 -plaintextkeyword KRYPTOS -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt
 # --- autokey ---
 fast | autokey_len97_wl8               | auto     | autokey_len97_wl8.txt               | -cyclewordlen 8  -nrestarts 8000 -nhillclimbs 800
 fast | autokey_len97_wl21              | auto     | autokey_len97_wl21.txt              | -cyclewordlen 21 -nrestarts 4000 -nhillclimbs 800
@@ -168,12 +175,30 @@ slow | digrafid_pride | digrafid | digrafid_pride.txt | -logprob -period 5 -nres
 # pinned here (even periods are a documented ciphertext-only degeneracy) and a lean budget to keep the case
 # fast -- the blind P sweep + odd/even contrast are exercised by tests/test_cm_bifid_solver.c. Alphabet 25 (J->I).
 slow | cm_bifid_pride | cm-bifid | cm_bifid_pride.txt | -logprob -period 7 -nrestarts 4 -nhillclimbs 200000 -inittemp 0.08 -backtrackprob 0.3
+# --- Twin Bifid (two Bifid messages sharing one keyed 5x5 square at DIFFERENT periods; 25-letter,
+# J->I). The second message rides in as -cipher2; the solution is the two decrypts concatenated. The
+# joint 2x n-gram signal recovers both from the ACA lengths (135 each). Alphabet 25 (J->I). ---
+slow | twin_bifid_pp | twin-bifid | twin_bifid_pp_1.txt | -logprob -period 7 -period2 9 -cipher2 twin_bifid_pp_2.txt -nrestarts 4 -nhillclimbs 120000 -inittemp 0.08 -backtrackprob 0.3
+# --- Twin Trifid (two Trifid messages sharing one keyed 3x3x3 cube at DIFFERENT periods; 27-symbol
+# A..Z + '+'). The 27-cell cube needs QUINTGRAMS (overrides the suite's quadgrams) and is reliable
+# from ~210 letters each; -cipher2 supplies message 2. Periods 7 & 8 (not both divisible by 3). ---
+slow | twin_trifid_pp | twin-trifid | twin_trifid_pp_1.txt | -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt -logprob -period 7 -period2 8 -cipher2 twin_trifid_pp_2.txt -nrestarts 12 -nhillclimbs 300000 -inittemp 0.08 -backtrackprob 0.3
 # Fractionated Morse (Morse fractionation over a keyed 26-letter alphabet; trigraph substitution, no
 # period). The alphabet is an ACA KEYED alphabet searched as such (keyword + ascending tail), so it
 # needs -logprob; the decode length varies per key, so the hook tiles the decode to the ciphertext
 # length and folds in a Morse-validity reward. Recovers well into the short ACA range -- lean budget
 # here; the length cliff + per-scheme calibration are exercised by tests/test_fracmorse_solver.c.
 slow | fracmorse_pride | fracmorse | fracmorse_pride.txt | -logprob -nrestarts 4 -nhillclimbs 60000 -inittemp 0.30 -backtrackprob 0.3
+# Compressocrat (fractionation twin of Fractionated Morse: a fixed {1,2,3} Huffman code + a keyed
+# 26-alphabet mapping trigraphs to ciphertext letters, keyed-alphabet anneal + validity reward). It
+# COMPRESSES, so the ciphertext is shorter than the plaintext -- short-length fractionation gaming
+# makes the ACA 110-150 range unreliable; this case is a ~300-letter plaintext (the reliable range).
+# The length cliff + per-scheme calibration are exercised by tests/test_compressocrat_solver.c.
+slow | compressocrat_pp | compressocrat | compressocrat_pp.txt | -logprob -nrestarts 12 -nhillclimbs 100000 -inittemp 0.30
+# Enigma: Gillogly's 647-letter ciphertext-only example (reflector B, wheels II I III, rings A W D,
+# msg key B G I, 7 steckers). Blind position/ring/plugboard recovery from a pinned wheel order (the
+# full 60-order blind search is the slower "Bombe workload" -- exercised in tests/test_enigma_solver.c).
+slow | enigma_gillogly | enigma | enigma_gillogly.txt | -logprob -rotors II,I,III -nthreads 4
 # Progressive Key (periodic Vigenere/Variant/Beaufort + per-group constant key drift). The climbed
 # state is the P per-column base shifts (monogram-warm-started); period + progression pinned here to
 # keep the cases fast -- the blind P and blind progression sweeps are exercised by
@@ -205,6 +230,16 @@ slow | cadenus_aca         | cadenus       | cadenus_aca.txt         | -nrestart
 slow | nihilist_aca        | nihilist      | nihilist_aca.txt        | -nrestarts 400 -nhillclimbs 6000
 slow | swagman_aca         | swagman       | swagman_aca.txt         | -nrestarts 300 -nhillclimbs 6000
 fast | grille_aca          | grille        | grille_aca.txt          | -nrestarts 300 -nhillclimbs 6000
+# Sequence Transposition (ACA): chain-addition digit sequence buckets each letter into 1 of 10
+# columns; a keyword sets the column read order. The primer is transmitted in ACA (-primer);
+# only the 10-bucket read order is searched. Needs -logprob (the interleaving gams reward-only).
+# See tests/test_sequence_transposition*.c.
+fast | sequence_transposition_pp | st       | sequence_transposition_pp.txt | -logprob -primer 31415 -nrestarts 40 -nhillclimbs 20000
+# Running Key (Vigenere-family, running-TEXT key). KNOWN-KEY mode: -runningkeyfile supplies the
+# key text (the classic book-cipher attack / dragging a known text as the key); the family is
+# swept and the n-gram picks Vigenere. Deterministic exact decrypt. Blind recovery is a documented
+# limitation (running key is gamed without a key or crib) -- see tests/test_running_key_solver.c.
+fast | running_key_known    | running-key   | running_key_known.txt   | -logprob -runningkeyfile running_key_known.key
 # Period column order (AZdecrypt): periodic column-permutation transposition, composed to 2 stages.
 # Deterministic exhaustive solver (no -nrestarts/-nhillclimbs); this 168-letter case is a two-stage
 # cipher (56x3 UTP P:2 then 4x42 TP P:3) the solver inverts. See tests/test_period_column*.c.
@@ -228,7 +263,7 @@ slow | straddling_pp       | sc            | straddling_pp.txt       | -logprob
 # (n-gram alone is gamed cross-config). NEEDS quintgrams + a dictionary; the extra args override
 # the default quadgram table and point -dictionary at the repo-root word list (run from this dir).
 # ~300 letters clears the rare-letter (P/Q/Y-Z) ceiling; see tests/test_monome_dinome*.c.
-slow | monome_dinome_pp    | md            | monome_dinome_pp.txt    | -logprob -ngramsize 5 -ngramfile ../../english_quintgrams.txt -dictionary ../../OxfordEnglishWords.txt
+slow | monome_dinome_pp    | md            | monome_dinome_pp.txt    | -logprob -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt -dictionary ../../OxfordEnglishWords.txt
 # Ragbaby (keyed 24-letter alphabet; per-letter shift = word-position number mod 24). A ~113-letter
 # spaced cipher (keyword CRYPTOGRAM) recovered by the keyed-alphabet anneal; the known per-letter
 # shift makes it ride the reward-only quadgram table (no -logprob). Word divisions drive the
@@ -241,6 +276,13 @@ fast | ragbaby_pp          | ragbaby       | ragbaby_pp.txt          | -nrestart
 # See tests/test_aristocrat*.c.
 fast | aristocrat_pp        | aristocrat    | aristocrat_pp.txt       | -logprob -nrestarts 8 -nhillclimbs 120000
 fast | patristocrat_pp      | patristocrat  | patristocrat_pp.txt     | -logprob -nrestarts 8 -nhillclimbs 120000
+# Checkerboard (ACA "Checkerboard", 5x5 keyed square, plaintext letter -> row/col LABEL digraph;
+# 25-letter alphabet, J->I). SIMPLE case (a): one label keyword per axis, so each letter has exactly
+# one digraph and the square + label order fold into a free 25-code -> 25-letter bijection -- an
+# Aristocrat over 25 symbols, hence -logprob. ~239 letters (square KNIGHTSTEMPLAR, BLACK/WHITE). The
+# COMPLEX case (b) (two keywords per axis, homophonic) is NOT in the suite: its pairing pre-pass needs
+# ~400-600+ letters to rank the truth first, above the ACA range -- see tests/test_checkerboard_solver.c.
+fast | checkerboard_pp      | checkerboard  | checkerboard_pp.txt     | -logprob -nrestarts 12 -nhillclimbs 200000
 EOF
 
 trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }

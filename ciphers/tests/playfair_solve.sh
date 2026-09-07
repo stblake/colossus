@@ -13,7 +13,7 @@ SRC="$(cd "$(dirname "$0")/../.." && pwd)"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 out=$("$SRC/colossus" -type playfair -cipher "$HERE/playfair_pride.txt" \
-  -ngramsize 4 -ngramfile "$SRC/english_quadgrams.txt" -logprob -seed 1 \
+  -ngramsize 4 -ngramfile "$SRC/ngram_data/english/english_quadgrams.txt" -logprob -seed 1 \
   -nrestarts 6 -nhillclimbs 400000 -inittemp 0.08 -backtrackprob 0.3 2>/dev/null)
 
 echo "$out" | grep -E 'Result Score|^>>> ' | cut -c1-72

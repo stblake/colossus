@@ -16,7 +16,7 @@ cp "$SRC/ciphers/tests/transperoffset_solve.txt" "$LONGDIR/c.txt"
 CIPHER="$LONGDIR/c.txt"
 echo "cipher path length = ${#CIPHER} (was crashing when > 100)"
 N=$("$SRC/colossus" -type transperoffset -cipher "$CIPHER" \
-      -ngramsize 4 -ngramfile "$SRC/english_quadgrams.txt" \
+      -ngramsize 4 -ngramfile "$SRC/ngram_data/english/english_quadgrams.txt" \
       -nrestarts 10 -nhillclimbs 1000 2>/dev/null | grep -c '>>>')
 if [ "$N" -ge 1 ]; then echo "PASS: solver ran without crashing (found $N summary line)"; else echo "FAIL: no summary line — likely crashed"; fi
 rm -rf "$WORK"

@@ -27,7 +27,7 @@
 # letters stay wrong -- ambiguous rare-symbol homophones plus Beale's own documented
 # transcription errors -- but the message reads end to end.
 ../../colossus -type homophonic -cipher Beale_2.txt -delimiter ',' \
-    -ngramsize 5 -ngramfile ../../english_quintgrams.txt -logprob \
+    -ngramsize 5 -ngramfile ../../ngram_data/english/english_quintgrams.txt -logprob \
     -weightentropy 1.5 -weightmono 0 \
     -inittemp 0.8 -mintemp 0.005 \
     -nrestarts 1200 -nhillclimbs 1500000 \

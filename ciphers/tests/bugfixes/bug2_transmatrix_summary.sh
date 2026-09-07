@@ -13,6 +13,6 @@ cp "$SRC/ciphers/tests/bugfixes/bug2_cipher.txt" "$WORK/cipher.txt"
 cd "$WORK" || exit 1
 echo "Running -transmatrix 7 11 cw with no dictionary; expect '>>> <score>, <type>, 7, 11, 1, ...'"
 "$SRC/colossus" -type vig -cipher cipher.txt \
-  -ngramsize 4 -ngramfile "$SRC/english_quadgrams.txt" \
+  -ngramsize 4 -ngramfile "$SRC/ngram_data/english/english_quadgrams.txt" \
   -transmatrix 7 11 cw -nhillclimbs 20 -nrestarts 10 2>/dev/null | grep '>>>' | cut -c1-45
 rm -rf "$WORK"

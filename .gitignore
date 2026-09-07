@@ -1,5 +1,8 @@
 .DS_Store
 colossus
+# Compressed 8-bit n-gram tables: regenerable from the tracked text tables
+# (compress_ngrams.py / -writengrambin) and can be large (a sixgram is ~309 MB).
+*.ngbin
 tests/test_transpositions
 tests/test_ciphers
 tests/test_optimal_cycleword
@@ -83,6 +86,7 @@ tests/test_period_column_solver
 tests/test_period_column_space_solver
 tests/test_double_transposition
 tests/test_double_transposition_solver
+tests/test_ngram_bin
 tools/double_transposition_gen
 tests/test_pollux
 tests/test_pollux_solver
@@ -93,3 +97,26 @@ tools/morbit_gen
 tests/test_straddling_checkerboard
 tests/test_straddling_checkerboard_solver
 tools/straddling_checkerboard_gen
+tests/test_running_key
+tests/test_running_key_solver
+tools/running_key_gen
+tests/test_baconian
+tests/test_baconian_solver
+tools/baconian_gen
+tests/test_compressocrat
+tests/test_compressocrat_solver
+tools/compressocrat_gen
+tests/test_enigma
+tests/test_enigma_solver
+tools/enigma_gen
+# Raw Gutenberg corpus downloads — reproducible from the tracked list.tsv, not
+# redistributed (the built ngram_data/ tables are what persist). Usually deleted
+# post-build, but ignored here so a present books/ is never accidentally tracked.
+tools/*_corpus/books/
+tools/*_corpus/books_excluded/
+
+# Added by code-review-graph
+.code-review-graph/
+# Local Claude Code state (machine-specific, not shared)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
