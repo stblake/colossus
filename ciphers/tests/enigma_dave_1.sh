@@ -9,6 +9,6 @@ $home/colossus -type enigma \
     -logprob \
     -nthreads 8 \
     -check-solution-file $home/ciphers/tests/enigma_dave_1.solution \
-    -spaces -spacesngramsize 4 \
-    -spacesngramfile $home/ngram_data/english/english_spaces_quadgrams.txt \
+    -spaces -spacesngramsize 6 \
+    -spacesngramfile $home/ngram_data/english/english_spaces_sixgrams.txt \
     -bombe -crib $home/ciphers/tests/enigma_dave_1.crib

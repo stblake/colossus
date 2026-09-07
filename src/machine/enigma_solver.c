@@ -514,6 +514,7 @@ void enigma_emit_report(ColossusConfig *cfg, SharedData *shared,
     print_text(decrypted, cipher_len);
     printf("\n");
     print_solution_check(decrypted, cipher_len);
+    print_spaces_line(g_spaces_table, decrypted, cipher_len);
     if (cribtext) printf("%s\n", cribtext);
 
     if (result) {
