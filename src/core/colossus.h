@@ -124,8 +124,9 @@ typedef struct CribDrag {
 #define TWIN_BIFID         93  // Twin Bifid (ACA): two Bifid messages sharing ONE keyed 5x5 Polybius square at DIFFERENT periods (the plaintexts share a common phrase); joint single-square anneal scoring both decrypts (~2x n-gram signal); second ciphertext via -cipher2, periods -period/-period2
 #define TWIN_TRIFID        94  // Twin Trifid (ACA): the Trifid analogue -- two Trifid messages sharing ONE keyed 3x3x3 cube at different periods; joint single-cube anneal over both decrypts; second ciphertext via -cipher2, periods -period/-period2
 #define ENIGMA             95  // Enigma (rotor machine): Services Enigma I + naval M3/M4; ciphertext-only IoC/ring/plugboard attack (Gillogly) OR Turing-Welchman Bombe (-bombe with a crib); rotors I-VIII, Greek Beta/Gamma, reflectors B/C (+thin), plugboard
+#define CHAOCIPHER         96  // Chaocipher (Byrne 1918): two 26-letter alphabets (left=ciphertext, right=plaintext) each permuted after every letter; key = the two STARTING alphabets; anneal them by n-gram (blind) or Lasry's aggregate-displacement-error reward (known-plaintext/crib)
 
-#define N_CIPHER_TYPES     96   // number of real cipher-type codes (0..95 inclusive)
+#define N_CIPHER_TYPES     97   // number of real cipher-type codes (0..96 inclusive)
 #define TYPE_ALL         1000   // sentinel for "-type all": sweep every plausible type
 
 // Baconian grouping mode (-baconmode / cfg.bacon_mode): which cover unit is one a/b symbol.

@@ -270,6 +270,7 @@
 #include "baconian_solver.h"
 #include "compressocrat_solver.h"
 #include "enigma_solver.h"
+#include "chaocipher_solver.h"
 #include "spaces.h"
 
 #include <sys/wait.h>   // waitpid() for the "-type all" subprocess sweep
@@ -1566,6 +1567,8 @@ int main(int argc, char **argv) {
         printf("\nAttacking a Compressocrat cipher (fractionation twin of Fractionated Morse: a fixed {1,2,3} Huffman code + a keyed 26-alphabet mapping trigraphs to ciphertext letters; keyed-alphabet anneal with a validity reward).\n\n");
     } else if (cfg.cipher_type == ENIGMA) {
         printf("\nAttacking an Enigma cipher (rotor machine; ciphertext-only IoC/ring/plugboard attack after Gillogly, a known-key decrypt when pinned, or the Turing-Welchman Bombe with -bombe + a crib).\n\n");
+    } else if (cfg.cipher_type == CHAOCIPHER) {
+        printf("\nAttacking a Chaocipher (two sliding alphabets; each enciphered letter permutes both disks, so the substitution drifts per position). Annealing the two starting alphabets by n-gram (blind) or Lasry's aggregate-displacement-error reward (with a crib).\n\n");
     } else {
         printf("\n\nERROR: Unknown cipher type %d.\n\n", cfg.cipher_type);
         return 0;
@@ -2393,6 +2396,14 @@ void solve_cipher(char *ciphertext_str, char *cribtext_str, ColossusConfig *cfg,
         // deterministic known-key decrypt when pinned, or the Turing-Welchman Bombe
         // (-bombe + crib). Heterogeneous key => its own solver, not the polyalpha pipeline.
         solve_enigma(ciphertext_str, cribtext_str, cfg, shared,
+            cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
+        return ;
+    }
+
+    if (cfg->cipher_type == CHAOCIPHER) {
+        // Self-modifying two-disk substitution. The key is the pair of STARTING alphabets;
+        // anneal them by n-gram (blind) or the aggregate-displacement-error reward (crib).
+        solve_chaocipher(ciphertext_str, cribtext_str, cfg, shared,
             cipher_indices, cipher_len, crib_indices, crib_positions, n_cribs, result);
         return ;
     }

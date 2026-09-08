@@ -1197,6 +1197,18 @@ static const SearchDefaults g_search_defaults[] = {
       .a_backtracking_probability = 0.25,
       .s_n_restarts = 10, .s_n_hill_climbs = 3000,
       .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
+    // Chaocipher: the reliable attack is the DETERMINISTIC known-plaintext reconstruction in
+    // the solver (not the engine). This profile drives ONLY the blind ciphertext-only anneal
+    // over the two 26-letter starting alphabets -- a DOCUMENTED-LIMITATION needle (a single
+    // starting-alphabet swap cascades the whole decrypt), so no schedule reliably solves it.
+    // A moderate warm-restart swap climb on the mean log-prob scale, kept modest so a blind
+    // attempt does not burn CPU on a needle. Tuned against test_chaocipher_solver.
+    { .cipher_type = CHAOCIPHER, .default_shape = SHAPE_ANNEAL,
+      .a_n_restarts = 20, .a_n_hill_climbs = 200000,
+      .a_init_temp = 0.30, .a_min_temp = 0.001, .a_cooling_rate = 0.0,
+      .a_backtracking_probability = 0.30,
+      .s_n_restarts = 120, .s_n_hill_climbs = 200000,
+      .s_slip_probability = 0.0005, .s_backtracking_probability = 0.20 },
     // Baconian: the searched key is the 26-letter a/b CLASSIFIER (a small binary labelling on
     // short cover text). Canonical rules are single SWEEP cells (no climb); the ONE free-climb
     // config per grouping mode flips one label per move over a needle-ish landscape (a flip re-

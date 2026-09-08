@@ -223,6 +223,9 @@ int parse_cipher_type(const char *arg) {
     // Enigma rotor machine (ciphertext-only IoC/plugboard attack, or -bombe crib attack).
     if (str_eq(arg, "enigma") || str_eq(arg, "enig")) return ENIGMA;
 
+    // Chaocipher (two sliding alphabets permuted after each enciphered letter).
+    if (str_eq(arg, "chaocipher") || str_eq(arg, "chao")) return CHAOCIPHER;
+
     // Progressive Key (periodic base cipher + per-group constant key drift). Check the
     // variant/beaufort aliases before the bare progkey so a substring never shadows them.
     if (str_eq(arg, "progkey-var") || str_eq(arg, "progkey-v") || str_eq(arg, "pkv"))
@@ -449,6 +452,7 @@ const char *cipher_type_name(int type) {
         case BACONIAN:                return "Baconian";
         case COMPRESSOCRAT:           return "Compressocrat";
         case ENIGMA:                  return "Enigma";
+        case CHAOCIPHER:              return "Chaocipher";
         default:                      return NULL;
     }
 }
@@ -557,6 +561,7 @@ const char *cipher_type_aliases(int type) {
         case BACONIAN:                return "baconian, bacon, bac";
         case COMPRESSOCRAT:           return "compressocrat, compress, comp";
         case ENIGMA:                  return "enigma, enig";
+        case CHAOCIPHER:              return "chaocipher, chao";
         default:                      return NULL;
     }
 }

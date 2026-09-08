@@ -350,6 +350,26 @@ Rotor machine (own solver, branches early in `solve_cipher`; not the periodic pi
   few-plug short floor substantially and roughly doubles many-plug (≥6) short recovery (though full
   ≥6-plug short solves stay rare, near the fundamental floor). Length-guarded so long messages stay
   fast; default off ⇒ bit-identical. See [[enigma-adaptive-ranking]].
+- `96` chaocipher/chao: John F. Byrne's Chaocipher (1918). Two 26-letter alphabets — LEFT
+  (ciphertext) and RIGHT (plaintext) — each PERMUTED after every enciphered letter, so the
+  substitution drifts per position; the KEY is the pair of STARTING alphabets (`chaocipher.c`,
+  algorithm per Rubin's "Chaocipher Revealed"; zenith=0/nadir=13, left block [1..13] and right
+  block [2..13] each rotate by one after an extra right-disk shift). Rotating BOTH alphabets by
+  the same offset is an equivalent key (keyspace 26!·25!; the report canonicalises so LEFT starts
+  with A). KEY FINDING: Chaocipher is a NEEDLE for local search — a single starting-alphabet swap
+  cascades the whole downstream decrypt, so blind n-gram annealing does NOT reliably recover the
+  key at practical lengths (~random; the apparent "solves" in early testing were a plant/solve
+  seed collision starting AT the key), like Condi. So two modes: (1) **blind ciphertext-only** —
+  a SHAPE_ANNEAL n-gram climb over the two starting alphabets, shipped for completeness but a
+  DOCUMENTED LIMITATION (characterised in the solver test, not run_tests). (2) **known-plaintext**
+  (a contiguous crib prefix via `-crib`) — a DETERMINISTIC BACKTRACKING RECONSTRUCTION (the method
+  that solved the real exhibits; the repo's "deterministic/constructive for needles" rule): walk
+  the known pt+ct streams, pinning the shared position of each pt/ct pair into the starting
+  alphabets (with an origin-index map back to the start frame) and pruning on contradictions.
+  Recovers the key from a crib prefix and decrypts the whole message (full crib ⇒ 100%; a partial
+  prefix recovers the tail down to rare unexercised-letter cells). Typical solves <0.1s, worst
+  ~10s (key-dependent early branching, node-capped). `run_tests` case `chaocipher_kpa` is a
+  full-crib solve. See [[chaocipher-cipher]].
 
 Substitution:
 - `28` indep · `29` homophonic · `77` ragbaby/rag · `79` aristocrat/arist · `80` patristocrat/patri

@@ -199,6 +199,11 @@ slow | compressocrat_pp | compressocrat | compressocrat_pp.txt | -logprob -nrest
 # msg key B G I, 7 steckers). Blind position/ring/plugboard recovery from a pinned wheel order (the
 # full 60-order blind search is the slower "Bombe workload" -- exercised in tests/test_enigma_solver.c).
 slow | enigma_gillogly | enigma | enigma_gillogly.txt | -logprob -rotors II,I,III -nthreads 4
+# Chaocipher: the reliable attack is the deterministic KNOWN-PLAINTEXT reconstruction (blind is a
+# needle -- characterised in tests/test_chaocipher_solver.c, not here). Full-crib known-plaintext
+# solve: reconstruct the two starting alphabets from the crib and decrypt (recovered up to the
+# rotation gauge). Deterministic, so -seed is irrelevant.
+fast | chaocipher_kpa | chaocipher | chaocipher_kpa.txt | -crib chaocipher_kpa.crib
 # Progressive Key (periodic Vigenere/Variant/Beaufort + per-group constant key drift). The climbed
 # state is the P per-column base shifts (monogram-warm-started); period + progression pinned here to
 # keep the cases fast -- the blind P and blind progression sweeps are exercised by
