@@ -309,6 +309,7 @@ static void aristocrat_report(const SolverCtx *ctx, const SolverConfig *cc,
     printf(", ");
     print_text(decrypted, len);
     printf("\n");
+    print_spaces_line(g_spaces_table, decrypted, len);
 }
 
 static const CipherModel ARISTOCRAT_MODEL = {
