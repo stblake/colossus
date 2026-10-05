@@ -91,8 +91,10 @@ static int plant(const char *kw, int p1, int p2, int len1, int len2,
     square_from_keyword(kw, sq);
     int c1[MAX_CIPHER_LENGTH], c2[MAX_CIPHER_LENGTH];
     twin_bifid_encrypt(prepared, n1, prepared + n1, n2, sq, 5, p1, p2, c1, c2);
-    for (int i = 0; i < n1; i++) cs1[i] = index_to_char(c1[i]);  cs1[n1] = '\0';
-    for (int i = 0; i < n2; i++) cs2[i] = index_to_char(c2[i]);  cs2[n2] = '\0';
+    for (int i = 0; i < n1; i++) cs1[i] = index_to_char(c1[i]);
+    cs1[n1] = '\0';
+    for (int i = 0; i < n2; i++) cs2[i] = index_to_char(c2[i]);
+    cs2[n2] = '\0';
     return n1 + n2;
 }
 

@@ -130,6 +130,11 @@ make clean
 ```
 
 - Build with **Homebrew gcc-16**, not Apple clang's `gcc` shim (see the build memory).
+- The build is **`-Wall -Werror`**: a warning fails the build, so keep every TU
+  warning-clean. One `$(CC)` is shared by all targets (`make`, `make test`,
+  `make testopt`, the `tools/*_gen` generators), so the policy covers the whole tree.
+  A spurious warning from a future gcc either gets fixed at the source or `-Werror` comes
+  off in the makefile.
 - The `CC` line does **not** include `-lm` — links on macOS (clang folds libm into
   libc) but **needs `-lm` on Linux**.
 - `make` also runs `cp colossus ..` (and `../quagmire`), copying the binary outside

@@ -35,8 +35,11 @@ static int rc_decode(const int *cipher, int len, int R, int C, int route_id, int
                      const int *order, const float *ngram_data, int ngram_size,
                      int use_best_l, int *L_out, int *out) {
     int n = route_cells(R, C, len, route_id, rc_cells);
-    if (n != len) { for (int i = 0; i < len; i++) out[i] = cipher[i];
-                    for (int r = 0; r < R; r++) L_out[r] = r; return R; }
+    if (n != len) {
+        for (int i = 0; i < len; i++) out[i] = cipher[i];
+        for (int r = 0; r < R; r++) L_out[r] = r;
+        return R;
+    }
     for (int k = 0; k < len; k++) rc_grid[rc_cells[k]] = cipher[k];   // scatter (row-major grid)
     for (int r = 0; r < R; r++) {
         for (int c = 0; c < C; c++) {

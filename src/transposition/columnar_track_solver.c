@@ -185,7 +185,9 @@ static void solve_columnar_track_crib(ColossusConfig *cfg, SharedData *shared,
     const WordSet *wset = trans_word_set(shared);
     int lo = cfg->min_cols, hi = cfg->max_cols;
     int cap = cipher_len / 2;
-    if (lo < 2) lo = 2; if (hi > cap) hi = cap; if (hi > MAX_COLS) hi = MAX_COLS;
+    if (lo < 2) lo = 2;
+    if (hi > cap) hi = cap;
+    if (hi > MAX_COLS) hi = MAX_COLS;
 
     int dirs[2], nd = 0;
     if (cfg->read_direction == COL_READ_BOTH) { dirs[nd++] = COL_READ_TB; dirs[nd++] = COL_READ_BT; }

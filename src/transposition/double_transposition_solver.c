@@ -470,7 +470,9 @@ void dct_solve_core(const int *cipher, int len, ColossusConfig *cfg,
     // Column-count range (shared with the columnar solvers), clamped to [2, len/2].
     int lo = cfg->min_cols, hi = cfg->max_cols;
     int cap = len / 2; if (cap > MAX_COLS - 1) cap = MAX_COLS - 1;
-    if (lo < 2) lo = 2; if (hi > cap) hi = cap; if (lo > hi) lo = hi;
+    if (lo < 2) lo = 2;
+    if (hi > cap) hi = cap;
+    if (lo > hi) lo = hi;
 
     // Read directions to try (both stages share cfg->read_direction).
     int dirs[2], ndir;

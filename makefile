@@ -6,9 +6,14 @@
 # reference toolchain (matches the Apple Silicon dev box); it is stricter and
 # surfaces warnings clang hides. On Apple Silicon it is /opt/homebrew/bin/gcc-16,
 # on Intel /usr/local/bin/gcc-16 -- both on PATH as `gcc-16`. `brew install gcc`.
-CC=gcc-16 -Wall -O3 -funroll-loops -pthread
+#
+# -Werror keeps the build warning-free: every target (the binary, the unit tests, the
+# `make testopt` solver regressions, and the tools/*_gen generators) shares this $(CC),
+# so a new -Wall warning anywhere fails the build instead of scrolling past. If a future
+# gcc release introduces a spurious warning, fix it at the source or drop -Werror here.
+CC=gcc-16 -Wall -Werror -O3 -funroll-loops -pthread
 
-# CC=gcc-16 -Wall -lm -g -O0
+# CC=gcc-16 -Wall -Werror -lm -g -O0
 
 # Sources live under src/<cipher-class>/. All local #includes are flat
 # (#include "foo.h"), so the compiler finds every header via these -I paths

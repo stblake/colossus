@@ -183,8 +183,10 @@ static void test_roundtrip(int n_row_lbl, int n_col_lbl, int side, int trials, c
     for (int t = 0; t < trials; t++) {
         int grid[CHECKERBOARD_MAX_GRID];
         random_square(grid, ncell);
-        int rl1[CHECKERBOARD_MAX_SIDE], rl2[CHECKERBOARD_MAX_SIDE];
-        int cl1[CHECKERBOARD_MAX_SIDE], cl2[CHECKERBOARD_MAX_SIDE];
+        // rl2/cl2 are filled by random_labels only when there are 2 labels on that axis;
+        // zero them so the single-label case reads defined (unused) values, not garbage.
+        int rl1[CHECKERBOARD_MAX_SIDE], rl2[CHECKERBOARD_MAX_SIDE] = {0};
+        int cl1[CHECKERBOARD_MAX_SIDE], cl2[CHECKERBOARD_MAX_SIDE] = {0};
         random_labels(rl1, rl2, n_row_lbl, side, alpha);
         random_labels(cl1, cl2, n_col_lbl, side, alpha);
         int rl[CHECKERBOARD_MAX_LABELS], cl[CHECKERBOARD_MAX_LABELS];

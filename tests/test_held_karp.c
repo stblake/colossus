@@ -6,7 +6,7 @@
 //     order is the unique optimum (cross-checked against brute force).
 //
 // Build (see makefile `test` target):
-//   gcc -I... tests/test_held_karp.c src/transposition/trans_common.c \
+//   gcc -I... tests/test_held_karp.c src/transposition/trans_common.c
 //       src/core/scoring.c src/core/utils.c src/core/dict.c -o tests/test_held_karp
 
 #include "colossus.h"

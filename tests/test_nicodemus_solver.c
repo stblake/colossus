@@ -63,7 +63,7 @@ static int plant(int type, const char *keyword, int H, int pt_len,
         int c = PLAINTEXT[i];
         if (c >= 'A' && c <= 'Z') prepared[n++] = c - 'A';
     }
-    int kw[MAX_COLS], P = 0;
+    int kw[MAX_COLS] = {0}, P = 0;
     for (int i = 0; keyword[i] && P < MAX_COLS; i++)
         if (keyword[i] >= 'A' && keyword[i] <= 'Z') kw[P++] = keyword[i] - 'A';
     int order[MAX_COLS], shifts[MAX_COLS];

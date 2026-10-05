@@ -52,6 +52,24 @@ const unsigned char *g_ngram_u8 = NULL;
 float  g_ngram_lut[256];
 size_t g_ngram_mmap_len = 0;
 
+// --- Statistics Data (declared extern in colossus.h). Defined here once rather than as
+// `static` in the header, so a single copy is shared instead of one unused copy per TU. ---
+
+int n_english_word_length_frequency_letters = 25;
+double english_word_length_frequencies[] = {
+	0.0316, 0.16975, 0.21192, 0.15678, 0.10852, 0.08524, 0.07724,
+	0.05623, 0.04032, 0.02766, 0.01582, 0.00917, 0.00483, 0.00262,
+	0.00099, 0.0005, 0.00027, 0.00022, 0.00011, 0.00006, 0.00005,
+	0.00002, 0.00001, 0.00001, 0.00001};
+
+double english_monograms[] = {
+	0.085517, 0.016048, 0.031644, 0.038712, 0.120965, 0.021815,
+	0.020863, 0.049557, 0.073251, 0.002198, 0.008087, 0.042065,
+	0.025263, 0.071722, 0.074673, 0.020662, 0.001040, 0.063327,
+	0.067282, 0.089381, 0.026816, 0.010593, 0.018254, 0.001914,
+	0.017214, 0.001138
+};
+
 // Build the index<->char maps and the reindexed monogram table. `excluded` is a
 // string of letters to drop from the standard A..Z ordering (NULL/"" => full A..Z).
 void init_alphabet(const char *excluded) {
@@ -225,7 +243,7 @@ void vec_print(int vec[], int len) {
 
 
 
-void print_text(int indices[], int len) {
+void print_text(const int indices[], int len) {
     for (int i = 0; i < len; i++) printf("%c", index_to_char(indices[i]));
 }
 
@@ -312,8 +330,10 @@ static int symbol_intern(SymbolTable *tab, const char *tok) {
         exit(1);
     }
     int id = tab->n++;
-    strncpy(tab->tokens[id], tok, MAX_TOKEN_LEN - 1);
-    tab->tokens[id][MAX_TOKEN_LEN - 1] = '\0';
+    size_t tok_len = strlen(tok);
+    if (tok_len > MAX_TOKEN_LEN - 1) tok_len = MAX_TOKEN_LEN - 1;
+    memcpy(tab->tokens[id], tok, tok_len);
+    tab->tokens[id][tok_len] = '\0';
     tab->freq[id] = 1;
     return id;
 }

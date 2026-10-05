@@ -767,21 +767,13 @@ typedef struct CipherModel {
 
 
 // --- Statistics Data ---
+// Defined once in utils.c (not here): a `static` array in a shared header gives every
+// translation unit its own unused copy, which -Wall flags across the whole build. These
+// are plain `extern` declarations; the single definitions live in src/core/utils.c.
 
-static int n_english_word_length_frequency_letters = 25;
-static double english_word_length_frequencies[] = {
-	0.0316, 0.16975, 0.21192, 0.15678, 0.10852, 0.08524, 0.07724, 
-	0.05623, 0.04032, 0.02766, 0.01582, 0.00917, 0.00483, 0.00262, 
-	0.00099, 0.0005, 0.00027, 0.00022, 0.00011, 0.00006, 0.00005, 
-	0.00002, 0.00001, 0.00001, 0.00001};
-
-static double english_monograms[] = {
-	0.085517, 0.016048, 0.031644, 0.038712, 0.120965, 0.021815, 
-	0.020863, 0.049557, 0.073251, 0.002198, 0.008087, 0.042065, 
-	0.025263, 0.071722, 0.074673, 0.020662, 0.001040, 0.063327, 
-	0.067282, 0.089381, 0.026816, 0.010593, 0.018254, 0.001914, 
-	0.017214, 0.001138
-};
+extern int n_english_word_length_frequency_letters;
+extern double english_word_length_frequencies[];
+extern double english_monograms[];
 
 // Per-cipher-type tuned search defaults. The global init_config() values suit the
 // polyalphabetic / transposition score scale; substitution types with a very
@@ -1340,8 +1332,6 @@ double vec_stddev(double vec[], int len);
 
 // Utils
 static inline uint32_t fast_rand(void);
-static inline void seed_fast_rand(uint32_t seed);
-static inline uint32_t fast_rand_bounded(uint32_t range);
 int gcd(int a, int b);
 int str_eq(const char *a, const char *b);
 int parse_cipher_type(const char *arg);
@@ -1354,7 +1344,7 @@ const char *cipher_type_name(int type);
 const char *cipher_type_aliases(int type);
 int unique_len(char *str);
 void vec_print(int vec[], int len);
-void print_text(int indices[], int len);
+void print_text(const int indices[], int len);
 void ord(char *text, int indices[]);
 
 // -check-solution-file: load a known-plaintext solution once in main(), uppercased with

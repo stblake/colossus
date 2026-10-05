@@ -217,6 +217,10 @@ static void seq_pi_string(const int pi[], char out[]) {
 }
 
 static void seq_primer_string(const int primer[], int P, char out[]) {
+    // P is clamped to [2, SEQ_TRANS_MAX_PRIMER] at setup; re-assert the upper bound here
+    // so the compiler can see `out` (a char[SEQ_TRANS_MAX_PRIMER + 1]) is never overrun.
+    if (P < 0) P = 0;
+    if (P > SEQ_TRANS_MAX_PRIMER) P = SEQ_TRANS_MAX_PRIMER;
     for (int i = 0; i < P; i++) out[i] = (char)('0' + primer[i] % 10);
     out[P] = '\0';
 }

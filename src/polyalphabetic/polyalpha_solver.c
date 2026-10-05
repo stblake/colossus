@@ -860,7 +860,7 @@ bool constrain_cycleword(ColossusConfig *cfg, int cipher_indices[], int cipher_l
     int cycleword_indices[], int cycleword_len, 
     bool variant, bool verbose) {
 
-    int i, j, k, crib_char, ciphertext_char, posn_keyword, posn_cycleword, 
+    int i, j, k, crib_char, ciphertext_char, posn_keyword = 0, posn_cycleword = 0,
         indx, crib_cyclewords[MAX_CYCLEWORD_LEN], mapped_pos;
 
     if (n_cribs == 0) return false; 
