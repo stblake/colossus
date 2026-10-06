@@ -21,6 +21,13 @@ CC=gcc-16 -Wall -Werror -O3 -funroll-loops -pthread
 SRC=src
 INCLUDES=-I$(SRC)/core -I$(SRC)/polyalphabetic -I$(SRC)/transposition -I$(SRC)/polygraphic -I$(SRC)/substitution -I$(SRC)/machine
 
+# Install location for `make install`. The binary goes in $(BINDIR), which is on
+# the default macOS/Linux PATH, so `colossus` is runnable from anywhere. Override
+# the prefix with e.g. `make install PREFIX=$HOME/.local` (no sudo needed); the
+# default /usr/local usually needs `sudo make install`.
+PREFIX=/usr/local
+BINDIR=$(PREFIX)/bin
+
 CORE=$(SRC)/core
 POLY=$(SRC)/polyalphabetic
 TRANS=$(SRC)/transposition
@@ -41,6 +48,18 @@ all:
 	$(CC) $(INCLUDES) $(SOLVER_SRC) -o colossus
 	cp colossus ..
 	cp colossus ../quagmire
+
+# Install the built binary somewhere on PATH so `colossus` runs from any directory.
+# Builds first, then copies ./colossus into $(BINDIR). Use `sudo make install` for the
+# default /usr/local, or point PREFIX at a user-writable dir (e.g. PREFIX=$HOME/.local).
+# NOTE: colossus loads its n-gram table, dictionary, and ciphertext from the CURRENT
+# directory, so pass absolute paths to -ngramfile/-cipher/etc. when running from elsewhere.
+install: all
+	install -d $(DESTDIR)$(BINDIR)
+	install -m 755 colossus $(DESTDIR)$(BINDIR)/colossus
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/colossus
 
 # Fast unit tests of the primitives (sub-second). Add -lm on Linux.
 #   test_transpositions   : the transposition primitives (transpositions.c)
