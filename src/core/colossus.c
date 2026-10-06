@@ -326,6 +326,7 @@ void init_config(ColossusConfig *cfg) {
     cfg->batch_present = false;
     cfg->crib_present = false;
     cfg->cribdrag_present = false;
+    cfg->cribdrag_max_offset = -1;
     cfg->cribdrag.nwords = 0;
     cfg->dictionary_present = false;
     cfg->verbose = false;
@@ -711,6 +712,7 @@ static void print_help(const char *prog) {
 "  -weightngram <f>        N-gram score weight.                              [12.0]\n"
 "  -weightcrib <f>         Crib-match score weight.                          [36.0]\n"
 "  -weightcribdrag <f>     Crib-dragging reward weight (-cribdrag).          [36.0]\n"
+"  -cribdragmaxoffset <n>  Enigma -bombe crib drag: try word offsets <= n only.   [all]\n"
 "  -weightioc <f>          Index-of-coincidence score weight.                 [0.0]\n"
 "  -weightentropy <f>      AZDecrypt entropy coupling: ngram*H^f (anti-collapse).[0.0]\n"
 "  -weightstructure <f>    Periodic-redundancy guard (general transposition). [4.0]\n"
@@ -1163,6 +1165,11 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-weightcrib") == 0) {
             cfg.weight_crib = atof(argv[++i]);
             printf("-weightcrib %.4f\n", cfg.weight_crib);
+        } else if (strcmp(argv[i], "-cribdragmaxoffset") == 0) {
+            // Enigma Bombe crib drag: only slide each word to offsets <= this (e.g. message-opening
+            // formulas); -1 (default) tries every admissible offset.
+            cfg.cribdrag_max_offset = atoi(argv[++i]);
+            printf("-cribdragmaxoffset %d\n", cfg.cribdrag_max_offset);
         } else if (strcmp(argv[i], "-weightcribdrag") == 0) {
             cfg.weight_cribdrag = atof(argv[++i]);
             printf("-weightcribdrag %.4f\n", cfg.weight_cribdrag);

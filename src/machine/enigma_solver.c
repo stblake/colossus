@@ -68,6 +68,10 @@
 static const int ENIGMA_POOL[ENIGMA_POOL_SIZE] = {
     ENIGMA_I, ENIGMA_II, ENIGMA_III, ENIGMA_IV, ENIGMA_V,
 };
+#define ENIGMA_NAVAL_POOL_SIZE 8  // blind M4 rotor pool = I..VIII (Kriegsmarine)
+static const int ENIGMA_NAVAL_POOL[ENIGMA_NAVAL_POOL_SIZE] = {
+    ENIGMA_I, ENIGMA_II, ENIGMA_III, ENIGMA_IV, ENIGMA_V, ENIGMA_VI, ENIGMA_VII, ENIGMA_VIII,
+};
 
 typedef struct {
     EnigmaKey key;      // fixed order/ring/pos; .plug is the greedy warm-start plugboard
@@ -562,7 +566,7 @@ static const CipherModel ENIGMA_MODEL = {
 // ------------------------------------------------------------------ report
 
 // Render the plugboard involution as "AB CD EF" pairs; returns chars written.
-static void enigma_format_plugs(const int plug[26], char *buf) {
+void enigma_format_plugs(const int plug[26], char *buf) {
     char *p = buf; int first = 1;
     for (int i = 0; i < 26; i++) if (plug[i] > i) {
         if (!first) *p++ = ' ';
@@ -644,17 +648,20 @@ int enigma_enumerate_wheel_orders(const ColossusConfig *cfg, EnigmaKey *tmpl, in
         tmpl[n++] = base;
         return n;
     }
-    // Blind: ordered triples of the pool. (M4 blind is impractical -- guarded by the caller.)
-    if (base.n_wheels == 4) base.rotor[0] = cfg->enigma_greek;
-    for (int a = 0; a < ENIGMA_POOL_SIZE; a++)
-      for (int b = 0; b < ENIGMA_POOL_SIZE; b++) {
+    // Blind: ordered triples of the pool (M3: 60 Services orders; M4: 336 naval orders, ~45 s
+    // per (-greek, -reflector) pair on 16 threads with the offset-table core).
+    // M3 blind keeps the Services pool I..V (60 orders, bit-identical); M4 is naval => I..VIII.
+    const int *pool = ENIGMA_POOL; int psz = ENIGMA_POOL_SIZE;
+    if (base.n_wheels == 4) { base.rotor[0] = cfg->enigma_greek; pool = ENIGMA_NAVAL_POOL; psz = ENIGMA_NAVAL_POOL_SIZE; }
+    for (int a = 0; a < psz; a++)
+      for (int b = 0; b < psz; b++) {
         if (b == a) continue;
-        for (int c = 0; c < ENIGMA_POOL_SIZE; c++) {
+        for (int c = 0; c < psz; c++) {
             if (c == a || c == b) continue;
             if (n >= cap) return n;
-            base.rotor[off + 0] = ENIGMA_POOL[a];
-            base.rotor[off + 1] = ENIGMA_POOL[b];
-            base.rotor[off + 2] = ENIGMA_POOL[c];
+            base.rotor[off + 0] = pool[a];
+            base.rotor[off + 1] = pool[b];
+            base.rotor[off + 2] = pool[c];
             tmpl[n++] = base;
         }
       }
@@ -765,6 +772,36 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
     for (int i = 0; i < scratch.n_cand; i++) free(scratch.scrambler[i]);
 }
 
+// Quiet single-base completion (Bombe crib drag): ring refine + greedy/seeded reswap plugboard
+// climb, NO engine anneal and NO report. Returns the completed key's n-gram score and writes the
+// completed key to *out. Same steps as enigma_attack_from_bases' phases 2/3 tiers A+B.
+double enigma_complete_base(const ColossusConfig *cfg, SharedData *shared,
+    int cipher[], int cipher_len, const EnigmaKey *base, int maxplugs, EnigmaKey *out) {
+    EnigmaKey k = *base;
+    int r = k.n_wheels - 1, m = k.n_wheels - 2;
+    if (cfg->enigma_ring_present) {
+        int off = k.n_wheels - 3;
+        for (int j = 0; j < 3; j++) k.ring[off + j] = cfg->enigma_ring[j];
+    } else {
+        enigma_refine_ring(&k, r, cipher, cipher_len);
+        enigma_refine_ring(&k, m, cipher, cipher_len);
+    }
+    int *S = (int *) malloc((size_t) cipher_len * 26 * sizeof(int));
+    enigma_build_scrambler(&k, cipher_len, S);
+    int plug[26], seed[26];
+    bool have_seed = false;
+    for (int j = 0; j < 26; j++) if (k.plug[j] != j) { have_seed = true; break; }
+    if (have_seed) memcpy(seed, k.plug, sizeof(int) * 26);
+    else enigma_quick_plug(S, cipher, cipher_len, shared->ngram_data, cfg->ngram_size,
+                           maxplugs, NULL, seed);
+    double sc = enigma_plugboard_climb(S, cipher, cipher_len, shared->ngram_data, cfg->ngram_size,
+                                       maxplugs, seed, plug);
+    memcpy(k.plug, plug, sizeof(int) * 26);
+    free(S);
+    *out = k;
+    return sc;
+}
+
 // ------------------------------------------------------------------ entry point
 
 void solve_enigma(char *ciphertext_str, char *cribtext_str,
@@ -788,8 +825,12 @@ void solve_enigma(char *ciphertext_str, char *cribtext_str,
 
     // --- Bombe (crib) attack ---------------------------------------------------------
     if (cfg->enigma_bombe) {
+        if (n_cribs <= 0 && cfg->cribdrag_present && cfg->cribdrag.nwords > 0) {
+            solve_enigma_bombe_drag(cfg, shared, cipher_indices, cipher_len, result);
+            return;
+        }
         if (n_cribs <= 0) {
-            printf("\n\nERROR: -bombe requires a crib (-crib). No crib supplied.\n\n");
+            printf("\n\nERROR: -bombe requires a crib (-crib or -cribdrag). No crib supplied.\n\n");
             return;
         }
         solve_enigma_bombe(cfg, shared, cipher_indices, cipher_len,
@@ -824,17 +865,18 @@ void solve_enigma(char *ciphertext_str, char *cribtext_str,
     }
 
     if (cfg->enigma_model == 4 && !cfg->enigma_rotors_present) {
-        printf("\n\nERROR: blind M4 (4-rotor) ciphertext-only search is impractical "
-               "(26^4 x hundreds of orders). Pin the wheel order with -rotors, or use "
-               "-bombe with a crib.\n\n");
-        return;
+        // Blind M4: 336 naval orders (I..VIII) x 26^4 positions, full rotor walk (no scrambler
+        // table) -- minutes threaded with the offset-table core, per (-greek, -reflector) pair.
+        printf("\nenigma: blind M4 search -- 336 naval wheel orders (I..VIII) x 26^4 positions "
+               "(Greek wheel position swept, its ring is unidentifiable); sweep -greek beta|gamma "
+               "and -reflector bthin|cthin externally. Slow; use -nthreads.\n");
     }
 
     // --- Phase 1: wheel order + fast ring + start positions by IoC (threaded) ---------
     // A threaded (order x fast-ring x position) IoC sweep keeps the top-P configs; each is
     // then middle-ring-refined and the global top-K by that IoC feed the plugboard climb.
-    static EnigmaKey tmpl[64];
-    int n_orders = enigma_enumerate_wheel_orders(cfg, tmpl, 64);
+    static EnigmaKey tmpl[512];
+    int n_orders = enigma_enumerate_wheel_orders(cfg, tmpl, 512);
     int K = (cfg->enigma_ntopk > 0) ? cfg->enigma_ntopk : 6;
     if (K > ENIGMA_MAX_CAND) K = ENIGMA_MAX_CAND;
 

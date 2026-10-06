@@ -431,6 +431,7 @@ typedef struct {
     bool batch_present;
     bool crib_present;
     bool cribdrag_present;
+    int  cribdrag_max_offset;       // -cribdragmaxoffset: Enigma Bombe drag tries offsets <= this (-1 = all)
     CribDrag cribdrag;              // parsed -cribdrag words (alphabet indices)
     bool dictionary_present;
     bool variant;

@@ -347,7 +347,17 @@ Rotor machine (own solver, branches early in `solve_cipher`; not the periodic pi
   completion finishes it — exact recovery even where the IoC attack is marginal. Pins:
   `-rotors II,I,III` (comma or space list), `-ring`/`-startpos` (letters A..Z or 1-based numbers),
   `-plugboard "EZ RW …"`; all four pinned ⇒ a deterministic known-key decrypt. `-ntopk`,
-  `-maxplugs`. Blind M4 ciphertext-only is impractical (26⁴×orders) — pin `-rotors` or use `-bombe`.
+  `-maxplugs`. Blind M4 ciphertext-only sweeps the 336 naval orders (I–VIII) × 26⁴ positions per
+  `-greek`/`-reflector` pair (~45 s each on 16 threads); sweep Beta/Gamma × bthin/cthin externally.
+  **Bombe CRIB DRAG** (`-bombe -cribdrag W1|W2|…`, no `-crib`): slides each probable word along
+  the ciphertext, rejects offsets where a crib letter equals its ciphertext letter (Enigma never
+  self-enciphers), and tests every surviving (word, offset) menu in ONE pass over the key space
+  (blind M4 included) using Turing's LOOP test (only fixed points of the scrambler composition
+  around a menu cycle are propagated; loop-less menus — short cribs — are skipped since they flood).
+  Each menu's stops are completed quietly and ranked by full-decrypt n-gram into a leaderboard; a
+  wrong long crib yields ~0 stops, a right one a single stop with the whole plugboard. ~0.3 s per
+  menu per wheel order on 16 threads (≈100 s per menu per Greek/reflector pair blind M4).
+  `-cribdragmaxoffset N` caps offsets (message-opening formulas). See [[enigma-u534-blind-m4]].
   -logprob recommended. KATs pin Gillogly + the Ostwald-Weierud B432 vector. `-enigmaadaptive`
   (Ostwald-Weierud short-message selection) reranks the top rotor configs by a plugboard-COMPLETED
   n-gram before the climb (the default empty-plugboard-IoC ranking drops the true config on
@@ -582,8 +592,11 @@ Documented structural facts (asserted or characterized in the solver tests), not
   rotor ring is unidentifiable** (it never steps) — recovered up to the pos−ring offset, so
   reported rings/pos may differ from the true key while decrypting identically. Ring settings are
   required for the exact plaintext (they set the turnover timing — a rings-AAA-only solve is
-  correct only up to the first turnover). **Blind M4 is impractical** (26⁴×orders); M4 is served by
-  the machine, the Bombe, and known-key decrypt. The **Bombe (`-bombe` + crib)** is the reliable
+  correct only up to the first turnover). **Blind M4 runs** (336 naval orders × 26⁴, ~45 s per
+  Greek/reflector pair) but shares the short-message floor: at 72 letters / 10 plugs the true
+  config's empty-board IoC is not in the top 512 of 26⁴ positions even with order + ring pinned
+  (see [[enigma-u534-blind-m4]]); M4 is also served by the machine, the Bombe, and known-key
+  decrypt. The **Bombe (`-bombe` + crib)** is the reliable
   workhorse where IoC is marginal: it recovers the rotor config + plugboard exactly from a crib,
   and is the tool for short messages. Solver test asserts the Bombe + a characterised ciphertext-
   only length/plug curve; `run_tests.sh` case `enigma_gillogly` is the 647-letter Gillogly example

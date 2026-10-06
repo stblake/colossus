@@ -52,4 +52,19 @@ void enigma_attack_from_bases(ColossusConfig *cfg, SharedData *shared,
 double enigma_plugboard_climb(const int *S, int cipher[], int cipher_len,
     float *ngram_data, int ngram_size, int maxplugs, const int *seed_plug, int out_plug[26]);
 
+// Bombe CRIB DRAG (enigma_bombe.c): -bombe -cribdrag W1|W2|... with no positioned crib. Slides
+// every word across the ciphertext, keeps the offsets Enigma allows (no self-encipherment),
+// runs ONE pass over the key space evaluating every (word, offset) menu, completes each menu's
+// stops quietly and prints a leaderboard; the global best is then reported as usual.
+bool solve_enigma_bombe_drag(ColossusConfig *cfg, SharedData *shared,
+    int cipher_indices[], int cipher_len, SolveResult *result);
+
+// Quiet completion of one Bombe stop / base key (ring refine + seeded reswap plugboard climb, no
+// engine anneal, no report). Returns the n-gram score; *out is the completed key.
+double enigma_complete_base(const ColossusConfig *cfg, SharedData *shared,
+    int cipher[], int cipher_len, const EnigmaKey *base, int maxplugs, EnigmaKey *out);
+
+// Render a plugboard involution as "AB CD EF" pairs ("(none)" if empty).
+void enigma_format_plugs(const int plug[26], char *buf);
+
 #endif // ENIGMA_SOLVER_H

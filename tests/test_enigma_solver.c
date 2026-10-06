@@ -1,8 +1,10 @@
 // In-process solver regression for the Enigma type. Built with -DCOLOSSUS_NO_MAIN and linked
 // against the whole solver so it calls solve_cipher() directly. Validates the SearchDefaults
 // registry entry, characterises the ciphertext-only capability (recovery vs length/plugs with
-// the wheel order pinned -- the realistic fast path), and checks the Bombe recovers a planted
-// crib exactly. Run from the source directory so the n-gram table is found in the cwd.
+// the wheel order pinned -- the realistic fast path), checks the Bombe recovers a planted
+// crib exactly, and checks the position-free crib DRAG (-bombe -cribdrag) lands a stop on a
+// true crib, none on a false one, and honours -cribdragmaxoffset. Run from the source
+// directory so the n-gram table is found in the cwd.
 
 #include <stdio.h>
 #include <string.h>
@@ -173,6 +175,89 @@ static void test_bombe(void) {
     CHECK(f > 0.90, "Bombe recovery %.2f, expected > 0.90 from a crib", f);
 }
 
+// --- Bombe CRIB DRAG: a position-free crib recovers the config + plugboard -----------
+// One in-process drag: plant with the wheel order AND ring pinned (so the stop decrypts
+// exactly and the run stays quick -- the fast-ring sweep is already covered by test_bombe),
+// then call solve_enigma_bombe_drag() with a single dragged `crib_word`. Returns the
+// plaintext recovery fraction and sets *found to the drag's "a stop was completed" flag.
+static double drag_run(const int rotors[3], int len, int nplugs, unsigned seed,
+                       const char *crib_word, int maxoffset, int *found) {
+    EnigmaKey k;
+    make_key(&k, rotors, nplugs, seed);
+    for (int i = 0; i < 3; i++) k.ring[i] = 0;        // ring AAA, pinned below -> exact decrypt
+    int prepared[600];
+    char cipher_str[601];
+    plant(&k, len, prepared, cipher_str);
+    int cipher_idx[600];
+    for (int i = 0; i < len; i++) cipher_idx[i] = cipher_str[i] - 'A';
+
+    ColossusConfig cfg;
+    init_config(&cfg);
+    cfg.cipher_type = ENIGMA;
+    cfg.ngram_size = NGRAM_SIZE;
+    cfg.method = METHOD_DEFAULT;
+    cfg.enigma_rotors_present = true;
+    for (int i = 0; i < 3; i++) cfg.enigma_rotors[i] = rotors[i];
+    cfg.enigma_ring_present = true;
+    for (int i = 0; i < 3; i++) cfg.enigma_ring[i] = 0;
+    cfg.enigma_bombe = true;
+    cfg.cribdrag_present = true;
+    cfg.cribdrag.nwords = 1;
+    int L = (int) strlen(crib_word);
+    cfg.cribdrag.wordlen[0] = L;
+    for (int i = 0; i < L; i++) cfg.cribdrag.words[0][i] = crib_word[i] - 'A';
+    cfg.cribdrag_max_offset = maxoffset;
+    cfg.n_threads = 4;
+    strcpy(cfg.ciphertext_file, "in-process-test");
+    apply_cipher_defaults(&cfg, false);
+
+    SolveResult res;
+    res.solved = false;
+    fflush(stdout);
+    int saved = dup(fileno(stdout));
+    if (freopen("/dev/null", "w", stdout) == NULL) { /* proceed anyway */ }
+    seed_rand(1u);
+    bool f = solve_enigma_bombe_drag(&cfg, &shared, cipher_idx, len, &res);
+    fflush(stdout);
+    dup2(saved, fileno(stdout)); close(saved); clearerr(stdout);
+
+    if (found) *found = f ? 1 : 0;
+    if (!res.solved || res.decrypted_len != len) return 0.0;
+    int ok = 0;
+    for (int i = 0; i < len; i++) if (res.decrypted[i] == prepared[i]) ok++;
+    return (double) ok / (double) len;
+}
+
+static void test_bombe_drag(void) {
+    const int rotors[3] = { ENIGMA_IV, ENIGMA_II, ENIGMA_V };
+    printf("\nEnigma Bombe CRIB DRAG (position-free crib, rotors+ring pinned):\n");
+
+    // 1) A long TRUE crib (the first 30 plaintext letters, so its true offset is 0) lands a
+    //    stop that completes to the whole key and decrypts the message.
+    char ctrue[64]; memcpy(ctrue, PLAINTEXT, 30); ctrue[30] = '\0';
+    int f1 = 0;
+    double r1 = drag_run(rotors, 150, 3, 20260922u, ctrue, -1, &f1);
+    printf("  true  crib (30, off 0,  cap -1): found=%d  %.1f%%\n", f1, 100.0 * r1);
+    CHECK(f1 && r1 > 0.90, "drag true crib: expected a stop recovering > 0.90 (found=%d, %.2f)", f1, r1);
+
+    // 2) A long FALSE crib (not in the plaintext) lands NO stop anywhere.
+    int f2 = 0;
+    double r2 = drag_run(rotors, 150, 3, 20260922u, "THEQUICKBROWNFOXJUMPSOVERLAZYD", -1, &f2);
+    printf("  false crib (30,          cap -1): found=%d  %.1f%%\n", f2, 100.0 * r2);
+    CHECK(!f2 && r2 < 0.5, "drag false crib: expected no stop (found=%d, %.2f)", f2, r2);
+
+    // 3/4) -cribdragmaxoffset gates a crib whose only true offset is 40: cap 40 keeps it,
+    //      cap 39 excludes it (so no stop).
+    char cmid[64]; memcpy(cmid, PLAINTEXT + 40, 26); cmid[26] = '\0';
+    int f3 = 0, f4 = 0;
+    double r3 = drag_run(rotors, 150, 3, 20260922u, cmid, 40, &f3);
+    double r4 = drag_run(rotors, 150, 3, 20260922u, cmid, 39, &f4);
+    printf("  mid   crib (26, off 40, cap 40): found=%d  %.1f%%\n", f3, 100.0 * r3);
+    printf("  mid   crib (26, off 40, cap 39): found=%d  %.1f%%\n", f4, 100.0 * r4);
+    CHECK(f3 && r3 > 0.90, "drag mid crib (cap includes true offset): expected > 0.90 (found=%d, %.2f)", f3, r3);
+    CHECK(!f4, "drag mid crib (cap 39 excludes true offset 40): expected no stop (found=%d)", f4);
+}
+
 // --- -enigmaadaptive: short-message config ranking (Ostwald-Weierud) -----------------
 // Colossus's default pipeline ranks rotor configs by EMPTY-plugboard IoC, which drops the true
 // config on short/many-plug messages before any plugboard climb (the real short-message floor --
@@ -218,6 +303,7 @@ int main(void) {
     test_registry();
     test_capability();
     test_bombe();
+    test_bombe_drag();
     test_adaptive();
 
     free(shared.ngram_data);
