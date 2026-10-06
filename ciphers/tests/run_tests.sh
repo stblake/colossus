@@ -199,6 +199,12 @@ slow | compressocrat_pp | compressocrat | compressocrat_pp.txt | -logprob -nrest
 # msg key B G I, 7 steckers). Blind position/ring/plugboard recovery from a pinned wheel order (the
 # full 60-order blind search is the slower "Bombe workload" -- exercised in tests/test_enigma_solver.c).
 slow | enigma_gillogly | enigma | enigma_gillogly.txt | -logprob -rotors II,I,III -nthreads 4
+# Enigma Bombe CRIB DRAG (-bombe -cribdrag, position-free crib, no positioned crib): slide a 28-letter
+# crib across the ciphertext, reject self-encipherment offsets, test every (word, offset) menu in one
+# key-space pass (Turing loop), complete + rank the stops. Wheel order + ring pinned here (the start
+# position + plugboard are recovered) so the single consistent stop decrypts exactly; the blind-order /
+# swept-ring capability lives in tests/test_enigma_solver.c (test_bombe_drag).
+slow | enigma_drag | enigma | enigma_drag.txt | -bombe -cribdrag ITISATRUTHUNIVERSALLYACKNOWL -rotors IV,II,V -ring A,A,A -nthreads 4
 # Chaocipher: the reliable attack is the deterministic KNOWN-PLAINTEXT reconstruction (blind is a
 # needle -- characterised in tests/test_chaocipher_solver.c, not here). Full-crib known-plaintext
 # solve: reconstruct the two starting alphabets from the crib and decrypt (recovered up to the
